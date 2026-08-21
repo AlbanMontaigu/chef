@@ -501,6 +501,32 @@ et chacun corrige un comportement observé :
 3. Le compteur se met à jour **sans re-rendu** : réécrire le formulaire à
    chaque frappe ferait perdre le focus au milieu de la saisie.
 
+### Un chiffre, un endroit
+
+Les tuiles de résumé — réservations à venir, couverts, e-mails non partis,
+allergies, devis à traiter, encours — ne s'affichent **que sur l'agenda**, qui
+est la page d'accueil du back-office et la seule qui ait vocation à résumer
+l'ensemble.
+
+Elles s'affichaient partout, et sur Facturation, Devis ou Relances elles
+répétaient un chiffre que le panneau juste en dessous portait déjà, en
+repoussant vers le bas le contenu qu'on venait chercher. Chaque onglet garde
+donc en tête de son propre panneau le seul chiffre qui le concerne : l'encours
+sur Facturation, les demandes à traiter sur Devis, les rappels en échec sur
+Relances. Comptabilité conserve ses trois tuiles parce que ce sont **ses**
+totaux, son sujet, et non un résumé rapporté d'ailleurs.
+
+La règle qui en découle vaut pour tout ajout : **deux affichages du même nombre
+sur une même page, c'est un de trop — et c'est celui qu'on oublie de mettre à
+jour.** Avant de retirer un affichage redondant, vérifier que l'autre existe
+bien, sinon on remplace une répétition par un trou.
+
+Le même raisonnement gouverne le macaron du hero public. Il dit le *métier*
+(« Chef à domicile ») et le titre dit le *nom* ; tant que `content/site.json`
+porte le placeholder, les deux disent la même chose, et le macaron s'efface de
+lui-même — comparaison faite sans casse ni accents. Il reparaît dès que le vrai
+nom est posé, parce que là il précise au lieu de répéter.
+
 ### Pourquoi une liste de dates côté client, un calendrier côté chef
 
 Les deux vues répondent à deux questions différentes. Le visiteur demande

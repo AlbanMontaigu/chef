@@ -73,6 +73,23 @@ book one directly. Same shape as the `flip7` app it is modelled on: a
   flag, and every surface separates the two. Collapsing them into one list of
   checkboxes loses the distinction that matters most.
 
+## One number, one place
+
+Summary tiles live on the **agenda tab only** — it is the back-office home and
+the only page whose job is to summarise. Every other tab already carries the one
+figure that concerns it in its own panel header (outstanding on Facturation,
+quotes to handle on Devis, hard-failed reminders on Relances); Comptabilité
+keeps its own totals because they are its subject, not a digest borrowed from
+elsewhere.
+
+**Two renderings of the same number on one page is one too many — and it is the
+one nobody remembers to update.** Same reasoning hides the public hero's eyebrow
+while the site name is still the placeholder: it says the *trade*, the title
+says the *name*, and until a real name is set both say the same thing.
+
+Before removing a redundant display, check the other one actually exists.
+Otherwise you replace a repetition with a hole.
+
 ## Two calendars, on purpose
 
 The visitor gets a **list of open dates** grouped by month; the chef gets a
