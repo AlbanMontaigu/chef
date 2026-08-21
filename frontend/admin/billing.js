@@ -48,11 +48,11 @@ export const billing = {
    page ne fait aucun appel réseau sortant, c'est le chef qui clique et c'est
    son téléphone qui ouvre la navigation. Le trajet est la seule chose qu'on ne
    sait pas donner sans dépendre d'un service tiers. */
-function itinerary(from, to) {
+export function itinerary(from, to, label = 'Itinéraire et durée') {
   if (!from || !to) return '';
   const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}`
     + `&destination=${encodeURIComponent(to)}&travelmode=driving`;
-  return `<a class="btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">Itinéraire et durée</a>`;
+  return `<a class="btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
 }
 
 const stateBadge = (state) => {

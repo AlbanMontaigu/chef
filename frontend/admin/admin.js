@@ -3,7 +3,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
          BILLING_STATE_LABEL } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
-         settingsPanel, captureDraft, draftPayload } from './billing.js';
+         settingsPanel, itinerary, captureDraft, draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -221,6 +221,7 @@ function bookingsPanel() {
       <p class="meta">${billingLine(b)}</p>
       <div class="actions">
         ${mailBadge(b)}
+        ${itinerary(billing.settings.chef_address, b.address, 'Trajet')}
         <button class="btn" data-folder-open="${b.id}">Facturation</button>
         <button class="btn danger" data-cancel="${b.id}">Annuler</button>
         <button class="btn" data-resend="${b.id}">Renvoyer les e-mails</button>
@@ -276,9 +277,13 @@ async function refresh() {
     // Les factures sont toujours rechargées, même hors de l'onglet : le
     // résumé en tête affiche l'encours sur toutes les pages, et un encours
     // périmé est une information fausse plutôt qu'absente.
-    const [slots, bookings, invoices] = await Promise.all([
-      api.slots(start, end), api.bookings(), api.invoices(),
+    // Les réglages accompagnent chaque rafraîchissement : le lien « Trajet »
+    // des cartes en dépend, et il ne peut pas attendre que le chef passe par
+    // l'onglet Réglages pour apparaître.
+    const [slots, bookings, invoices, config] = await Promise.all([
+      api.slots(start, end), api.bookings(), api.invoices(), api.settings(),
     ]);
+    billing.settings = config;
     view.slots = slots.slots;
     view.firstBookable = slots.first_bookable;
     view.bookings = bookings.bookings;
@@ -289,7 +294,7 @@ async function refresh() {
       billing.formulas = data.formulas;
       billing.pricingKinds = data.pricing_kinds;
     }
-    if (view.tab === 'reglages') billing.settings = await api.settings();
+
     if (billing.folder) {
       const id = billing.folder.booking.id;
       const booking = view.bookings.find((b) => b.id === id) ?? billing.folder.booking;
