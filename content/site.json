@@ -1,5 +1,5 @@
 {
-  "_comment": "TOUT LE CONTENU DU SITE EST ICI. Les valeurs PLACEHOLDER sont a remplacer par les vraies infos du chef. Editer ce fichier + push = site a jour, aucun code a toucher. hero_photo et portrait attendent un chemin comme /img/plat.jpg (photos dans frontend/img/) ; laisses vides, un disque colore tient la place.",
+  "_comment": "TOUT L'EDITORIAL DU SITE EST ICI. Les valeurs PLACEHOLDER sont a remplacer par les vraies infos du chef. Editer ce fichier + push = site a jour, aucun code a toucher. EXCEPTION : les formules et leurs tarifs ne sont plus ici, ils sont geres depuis le back-office (/admin, onglet Formules) parce qu'ils servent de base aux factures. Le bloc legal ci-dessous alimente l'en-tete des factures. hero_photo et portrait attendent un chemin comme /img/plat.jpg (photos dans frontend/img/) ; laisses vides, un disque colore tient la place.",
   "name": "Chef à domicile",
   "tagline": "Un vrai repas de chef, chez vous, sans rien avoir à faire.",
   "hero_photo": "",
@@ -14,29 +14,6 @@
         "J'arrive avec les courses et le matériel, je cuisine, je sers.",
         "Je repars, la cuisine propre."
       ]
-    }
-  ],
-  "formulas": [
-    {
-      "id": "decouverte",
-      "name": "PLACEHOLDER — Formule découverte",
-      "description": "Entrée, plat, dessert. Produits de saison.",
-      "price": "à partir de XX € / personne",
-      "min_guests": 4
-    },
-    {
-      "id": "signature",
-      "name": "PLACEHOLDER — Menu signature",
-      "description": "Cinq services, accords possibles.",
-      "price": "à partir de XX € / personne",
-      "min_guests": 6
-    },
-    {
-      "id": "reception",
-      "name": "PLACEHOLDER — Réception",
-      "description": "Buffet ou cocktail dînatoire pour un plus grand nombre.",
-      "price": "sur devis",
-      "min_guests": 15
     }
   ],
   "about": "PLACEHOLDER — le parcours du chef, en quelques phrases à la première personne. C'est le bloc qui donne envie de réserver : où il a travaillé, ce qu'il aime cuisiner, pourquoi il fait ça.",
@@ -55,7 +32,12 @@
     "notice": "La réservation bloque la date. Je vous recontacte sous 48 h pour le menu."
   },
   "legal": {
+    "company_name": "PLACEHOLDER — raison sociale exacte, telle qu'elle doit figurer sur les factures",
+    "status": "PLACEHOLDER — statut (ex. micro-entreprise)",
     "siret": "",
-    "status": "PLACEHOLDER — statut (ex. micro-entreprise)"
+    "address": "PLACEHOLDER — adresse du siege, sur une ou deux lignes",
+    "iban": "",
+    "bic": "",
+    "payment_terms": "Paiement a reception. Pas d'escompte pour paiement anticipe. Penalites de retard : trois fois le taux d'interet legal, indemnite forfaitaire de recouvrement de 40 EUR."
   }
 }

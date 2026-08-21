@@ -67,17 +67,83 @@ Bulk actions must report what they did *not* do — "4 ouverts, 2 l'étaient dé
 "3 fermés, 1 réservé laissé en place". A bulk action that silently absorbs the
 difference lets the chef believe a date is closed when it is not.
 
-## Content lives in `content/site.json`
+## Content lives in `content/site.json` — except the prices
 
-Prestations, tarifs, texte « à propos », zone d'intervention, bornes de
-réservation (`min_guests`, `max_guests`, `lead_days`). Rewording the site is a
-JSON edit and a push, never a code change. A malformed file falls back to
-neutral defaults and logs an error rather than taking the booking flow down.
+Texte « à propos », zone d'intervention, sections, galerie, bornes de
+réservation (`min_guests`, `max_guests`, `lead_days`), and the `legal` block
+that feeds the invoice header. Rewording the site is a JSON edit and a push,
+never a code change. A malformed file falls back to neutral defaults and logs
+an error rather than taking the booking flow down.
+
+**Formulas and their prices are NOT here — they are rows in `formulas`,
+managed from the back-office.** They moved the day they started backing an
+invoice: `"à partir de XX €"` is a sentence, not a price, and nothing can be
+computed from it. The public site reads them through `/api/content`, which
+assembles the JSON and the table into one document so that the price shown to
+a visitor is exactly the one the invoice will be built on. Do not re-add a
+`formulas` key to the JSON — two sources for one price is how a client gets
+quoted one figure and billed another.
 
 `lead_days` is the runway the chef needs for shopping and prep: slots closer
 than that are filtered out of the public calendar. The back-office flags such
 a slot as "ouvert mais trop proche" instead of showing a green "Ouvert" that
 nobody can book.
+
+## Money, formulas and invoices
+
+- **Every amount is an integer of cents**, front and back (`backend/money.py`,
+  `formatAmount`/`parseAmount` in `frontend/js/util.js`). No float ever touches
+  a price. Conversion to decimal happens at display and at input parsing, and
+  nowhere else.
+- **What is paid is the sum of the `payments` rows.** There is deliberately no
+  "paid" column to keep in step with them: a derived total cannot drift. A
+  refund is a negative row, so the sum stays the balance. The sign comes from
+  the *kind*, never from what the chef typed.
+- **A draft invoice is editable; an issued one is frozen.** The number is
+  allocated at issue, inside the transaction that freezes the totals, and the
+  sequence has no holes. Correcting an issued invoice means cancelling it —
+  with a reason, which is required — and issuing the next one. Never rewrite a
+  document that already left. `invoices_one_live_per_booking` enforces at most
+  one non-cancelled invoice per booking.
+- **Identities are copied onto the invoice at issue** (`seller_json`,
+  `client_json`). The chef's SIRET or the client's address will change; an
+  invoice already sent must not change with them.
+- **A balance only exists once a bill has been issued.** A draft is an
+  intention, not a debt: showing it as an outstanding amount would send the
+  chef chasing a client who never received anything. Before that, the
+  back-office shows an *estimate* and says so.
+- **The VAT regime is not guessable from the code.** `VAT_RATE_BP` defaults to
+  0, which prints the franchise mention instead of a VAT line. Confirm the
+  chef's actual status before the first real invoice; do not infer it.
+- Invoices render as a printable HTML page (`backend/invoice_html.py`), served
+  by `/api/admin/invoices/{id}/view` and attached to the client's e-mail. One
+  renderer, so what the chef proof-reads is byte-for-byte what the client
+  gets. No PDF library — the dependency constraint holds, and the browser
+  prints to PDF.
+
+## The demo seed, and keeping it honest
+
+`backend/seed.py` fills an empty database with a set of examples that make the
+back-office readable: formulas, open slots, bookings in every state, payments,
+a paid invoice, a partly-paid one, a draft, and one cancelled-then-reissued.
+
+- It only ever touches rows it created (`demo = 1`), so it cannot delete a
+  real booking. `SEED_DEMO` gates it — on in `DEV`, off elsewhere — and
+  turning it off removes the examples on the next start.
+- It steps aside for reality: as soon as one non-demo booking exists, the
+  examples are removed and never replayed. A demo invoice indistinguishable
+  from a real one is worse than an empty back-office.
+- `SEED_VERSION` is a single global integer. Bump it and the next start
+  replays the set.
+
+> **Standing rule — never let the example data fall behind the features.**
+> Any change that adds a field, a state, or a flow must show up in
+> `backend/seed.py` in the same commit, and `SEED_VERSION` must be bumped.
+> A seed that only covers the nominal case leaves half the interface
+> unexercised, and the first time anyone sees the new state rendered is in
+> production, on a real booking. The examples are the cheapest test surface
+> this repo has; they are only worth something while they still describe what
+> the code does.
 
 ## Configuration is entirely environment-driven
 

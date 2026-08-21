@@ -61,3 +61,39 @@ export function todayISO() {
   const n = new Date();
   return isoOf(n.getFullYear(), n.getMonth() + 1, n.getDate());
 }
+
+// --- Montants -----------------------------------------------------------
+// L'argent circule en centimes entiers de bout en bout, exactement comme
+// côté serveur. La seule conversion en décimal se fait ici, à l'affichage.
+
+const EUR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+
+export function formatAmount(cents) {
+  return EUR.format((Number(cents) || 0) / 100);
+}
+
+// Saisie humaine -> centimes. Renvoie null si ce n'est pas un montant, pour
+// que l'appelant refuse au lieu d'envoyer un zéro silencieux au serveur.
+export function parseAmount(text) {
+  const clean = String(text ?? '').replace(/[\s  €]/g, '').replace(',', '.');
+  if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
+  return Math.round(Number(clean) * 100);
+}
+
+// Centimes -> valeur d'un <input>, sans symbole ni séparateur de milliers :
+// un champ pré-rempli avec « 1 234,50 € » ne se resaisit pas.
+export function amountInput(cents) {
+  return ((Number(cents) || 0) / 100).toFixed(2).replace('.', ',');
+}
+
+export const PAYMENT_KIND_LABEL = {
+  acompte: 'Acompte', solde: 'Solde', remboursement: 'Remboursement',
+};
+export const PAYMENT_METHOD_LABEL = {
+  virement: 'Virement', especes: 'Espèces', cheque: 'Chèque', cb: 'Carte', autre: 'Autre',
+};
+export const BILLING_STATE_LABEL = {
+  unbilled: 'pas encore facturé', unpaid: 'en attente de paiement',
+  partial: 'partiellement payé', paid: 'soldé', overpaid: 'trop-perçu',
+  cancelled: 'annulée',
+};

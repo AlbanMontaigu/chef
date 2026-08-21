@@ -54,3 +54,21 @@ MAIL_TO = os.environ.get("MAIL_TO", "")
 
 def mail_enabled() -> bool:
     return bool(SMTP_HOST)
+
+
+# --- Facturation -------------------------------------------------------
+# Le régime de TVA n'est pas devinable depuis le code : il dépend du statut
+# réel du chef. Le défaut (0) correspond à la franchise en base -- la facture
+# porte alors la mention d'exonération au lieu d'une ligne de TVA. Passer à
+# un taux se fait ici, et n'affecte que les factures émises ensuite : une
+# facture déjà émise garde le taux avec lequel elle est partie.
+VAT_RATE_BP = int(os.environ.get("VAT_RATE_BP", "0"))  # points de base : 2000 = 20 %
+VAT_NOTE = os.environ.get("VAT_NOTE", "TVA non applicable, art. 293 B du CGI")
+INVOICE_PREFIX = os.environ.get("INVOICE_PREFIX", "F")
+PAYMENT_TERMS_DAYS = int(os.environ.get("PAYMENT_TERMS_DAYS", "30"))
+
+# --- Jeu de démonstration ---------------------------------------------
+# Semer une base vide de données parlantes est précieux en développement et
+# dangereux en production. L'interrupteur est donc explicite, allumé en DEV
+# seulement, et le semis ne touche jamais une ligne qu'il n'a pas créée.
+SEED_DEMO = os.environ.get("SEED_DEMO", "").lower() in ("1", "true", "yes") or DEV

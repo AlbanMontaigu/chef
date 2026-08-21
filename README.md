@@ -6,11 +6,16 @@ créneaux et les réservations.
 
 - **Site public** — présentation, formules, à propos, calendrier des dates
   disponibles, formulaire de réservation.
-- **Back-office** (`/admin`) — le chef ouvre et ferme ses créneaux sur un
-  calendrier, voit ses réservations, en annule une si besoin.
+- **Back-office** (`/admin`) — trois onglets : l'**agenda** (ouvrir et fermer
+  les créneaux, suivre les réservations), la **facturation** (factures,
+  encaissements, soldes) et les **formules** (tarifs).
+- **Facturation** — un brouillon se prépare depuis une réservation, s'émet avec
+  un numéro séquentiel définitif, s'imprime et s'envoie au client. Les
+  encaissements se saisissent au fil de l'eau ; le solde est toujours leur
+  somme, jamais un compteur tenu à part.
 - **E-mails** — confirmation au client, notification au chef, e-mail
-  d'annulation. Chaque envoi est tracé et les échecs sont affichés dans le
-  back-office.
+  d'annulation, envoi de facture. Chaque envoi est tracé et les échecs sont
+  affichés dans le back-office.
 
 ## Démarrer en local
 
@@ -26,11 +31,22 @@ Le site est sur <http://127.0.0.1:8000>, le back-office sur
 le mode par défaut en local, et il est signalé au démarrage comme dans le
 back-office.
 
+En local (`DEV=1`), une base vide est remplie d'un **jeu de démonstration** :
+formules, créneaux, réservations dans tous les états, factures et
+encaissements. Il ne touche que ses propres lignes et s'efface dès qu'une
+vraie réservation existe. Pour rejouer un jeu enrichi, incrémenter
+`SEED_VERSION` dans `backend/seed.py`.
+
 ## Modifier le contenu du site
 
 Tout le texte est dans [`content/site.json`](content/site.json) : nom, accroche,
-formules et tarifs, texte « à propos », zone d'intervention, bornes de
-réservation. Éditer ce fichier et pousser suffit — aucun code à toucher.
+texte « à propos », zone d'intervention, bornes de réservation, et le bloc
+`legal` qui alimente l'en-tête des factures. Éditer ce fichier et pousser
+suffit — aucun code à toucher.
+
+**Les formules et leurs tarifs ne sont plus dans ce fichier** : elles se
+gèrent depuis le back-office, onglet « Formules », parce qu'elles servent de
+base aux factures et qu'un montant doit être un nombre, pas une phrase.
 
 Les photos vont dans `frontend/img/`, référencées depuis la clé `gallery` :
 

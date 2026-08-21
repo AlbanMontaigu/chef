@@ -8,10 +8,12 @@ flowchart TD
     C[Chef] -->|GET /admin| A[Back-office]
     F -->|/api/content, /api/availability, POST /api/bookings| API[FastAPI]
     A -->|/api/admin/* + cookie signé| API
+    A -->|/api/admin/invoices/{id}/view| PDF[Facture imprimable]
     API --> DB[(SQLite<br/>volume monté)]
     API -->|smtplib| SMTP[Postfix Dedibox]
     SMTP --> MC[E-mail client]
     SMTP --> MCH[E-mail chef]
+    SMTP --> MF[Facture au client<br/>HTML en pièce jointe]
 ```
 
 Un seul process, une seule image. `backend/main.py` monte `frontend/` en
@@ -20,13 +22,30 @@ sur un fichier de même nom.
 
 ## Modèle de données
 
-Deux tables, dans `backend/schema.sql`.
+Dans `backend/schema.sql`.
 
 - **`slots`** — un créneau que le chef accepte de cuisiner : une date + un
   service (`midi` ou `soir`). Contrainte `UNIQUE (date, service)` : ouvrir deux
   fois le même créneau est un no-op, pas un doublon.
 - **`bookings`** — une réservation rattachée à un créneau, avec son statut
   (`confirmed` / `cancelled`), sa référence client et l'issue de ses e-mails.
+- **`formulas`** — les formules et leurs tarifs, en centimes. Elles ont quitté
+  `content/site.json` le jour où elles ont servi de base à une facture :
+  « à partir de XX € » est une phrase, pas un prix.
+- **`payments`** — les encaissements d'une réservation. Un remboursement y est
+  une ligne négative, pour que la somme reste le solde.
+- **`invoices` / `invoice_lines`** — une facture et ses lignes.
+- **`meta`** — clé/valeur interne, aujourd'hui la version du jeu de
+  démonstration et rien d'autre.
+
+```mermaid
+erDiagram
+    slots ||--o| bookings : "au plus une réservation vivante"
+    formulas ||--o{ bookings : "formule choisie"
+    bookings ||--o{ payments : "encaissements"
+    bookings ||--o| invoices : "au plus une facture vivante"
+    invoices ||--|{ invoice_lines : "lignes"
+```
 
 L'index partiel `bookings_one_live_per_slot` (unique sur `slot_id` où
 `status = 'confirmed'`) est **la** garantie anti-double-réservation. Deux
@@ -72,6 +91,80 @@ porte que sur les `confirmed`), et déclenche un e-mail au client.
 Fermer un créneau réservé est refusé (409) : la suppression cascaderait sur la
 réservation sans prévenir personne. Il faut annuler d'abord.
 
+## Facturation
+
+### Le cycle d'une facture
+
+```mermaid
+stateDiagram-v2
+    [*] --> brouillon : créée depuis une réservation
+    brouillon --> brouillon : lignes, échéance, mention modifiables
+    brouillon --> émise : numéro attribué, totaux gelés
+    émise --> émise : envoi au client (résultat inscrit sur la facture)
+    émise --> annulée : erreur constatée, motif obligatoire
+    brouillon --> annulée : brouillon jeté
+    annulée --> [*] : une nouvelle facture peut être créée
+```
+
+Une facture émise ne revient **jamais** en brouillon. Son numéro est parti chez
+le client ; la modifier produirait deux documents différents sous le même
+numéro. `PATCH /api/admin/invoices/{id}` répond 409 sur une facture émise, et
+c'est volontaire.
+
+Le numéro est séquentiel par année (`F2026-001`), attribué dans la transaction
+d'émission et nulle part ailleurs. Il est calculé par un `MAX` relu à chaque
+fois plutôt que par un compteur : un compteur et des factures peuvent
+désynchroniser, `MAX` ne le peut pas. L'index unique sur `number` reste le
+garde-fou en cas de course.
+
+Annuler consomme le numéro pour de bon — c'est ce qu'exige une séquence sans
+trou — et le motif reste attaché à la facture.
+
+### Argent et soldes
+
+Tous les montants sont des **entiers de centimes**, de la base de données au
+navigateur. Aucun flottant ne touche un prix.
+
+Ce qui est payé est **la somme des lignes de `payments`**. Il n'existe pas de
+colonne « payé » : un état dérivé ne peut pas diverger de ce qu'il résume.
+
+Une créance n'existe qu'à partir d'une **facture émise**. Tant qu'on en est au
+brouillon, le back-office affiche une *estimation* tirée de la formule et le
+dit — afficher un impayé enverrait le chef relancer un client qui n'a rien
+reçu.
+
+### Le rendu
+
+`backend/invoice_html.py` produit une page HTML imprimable, servie par
+`/api/admin/invoices/{id}/view` et jointe telle quelle à l'e-mail au client.
+Un seul rendu : ce que le chef relit est exactement ce que le client reçoit.
+Pas de bibliothèque PDF — la contrainte de dépendances minimales tient, et le
+navigateur imprime en PDF.
+
+## Jeu de démonstration
+
+`backend/seed.py` remplit une base vide d'exemples qui rendent le back-office
+lisible : formules, créneaux, réservations dans tous les états, encaissements,
+une facture soldée, une partiellement payée, un brouillon, une annulée puis
+réémise.
+
+Trois garde-fous, vérifiés :
+
+1. Il ne touche que les lignes qu'il a créées (`demo = 1`). Le reste part en
+   cascade depuis les créneaux, donc il n'y a aucune suppression large à
+   écrire.
+2. Il s'efface devant le réel : dès qu'une réservation non-démo existe, les
+   exemples sont retirés et ne rejouent plus.
+3. Il est versionné par un entier global, `SEED_VERSION`. L'incrémenter suffit
+   à forcer le rejeu au démarrage suivant.
+
+`SEED_DEMO` l'active (par défaut en `DEV`, éteint ailleurs). Éteindre la
+variable retire les exemples au démarrage suivant.
+
+**Toute évolution fonctionnelle doit se refléter dans le jeu, dans le même
+commit, avec `SEED_VERSION` incrémenté.** Un jeu qui ne montre que le cas
+nominal laisse la moitié de l'interface non éprouvée.
+
 ## Frontend
 
 `state → render() → innerHTML`, sans framework.
@@ -82,7 +175,14 @@ réservation sans prévenir personne. Il faut annuler d'abord.
 - `js/views/booking.js` — liste des dates, choix du service, formulaire,
   confirmation. C'est le seul bloc re-rendu, pour ne pas vider un formulaire
   en cours de saisie.
-- `admin/admin.js` — le back-office, avec son propre état et sa propre page.
+- `admin/admin.js` — le back-office : onglets, agenda, créneaux, réservations.
+- `admin/billing.js` — formules, encaissements, factures. Séparé pour la même
+  raison que côté serveur : ouvrir des dates et facturer un repas sont deux
+  métiers, et celui-ci manipule de l'argent.
+
+`admin.js` réécrit tout son DOM à chaque rendu. L'éditeur de brouillon relit
+donc ses champs dans l'état **avant** chaque re-rendu (`captureDraft`) : sans
+cette capture, ajouter une ligne effacerait ce qui vient d'être tapé.
 
 ### Pourquoi une liste de dates côté client, un calendrier côté chef
 

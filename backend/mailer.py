@@ -8,6 +8,7 @@ written back onto the booking row and surfaced in the back-office.
 
 import logging
 import smtplib
+from datetime import datetime
 from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
@@ -19,7 +20,8 @@ log = logging.getLogger("chef.mail")
 SERVICE_LABEL = {"midi": "déjeuner", "soir": "dîner"}
 
 
-def _send(to: str, subject: str, body: str, reply_to: str = "") -> tuple[str, str]:
+def _send(to: str, subject: str, body: str, reply_to: str = "",
+          attachment: tuple[str, str] | None = None) -> tuple[str, str]:
     """Returns (status, error). status is 'sent' | 'failed' | 'disabled'."""
     if not config.mail_enabled():
         log.warning("mail disabled (SMTP_HOST unset) -- not sending %r to %s", subject, to)
@@ -39,6 +41,15 @@ def _send(to: str, subject: str, body: str, reply_to: str = "") -> tuple[str, st
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.set_content(body)
+    if attachment:
+        filename, html = attachment
+        # Pièce jointe HTML plutôt qu'un PDF : le dépôt s'interdit une
+        # bibliothèque de rendu, et le navigateur du client imprime la page en
+        # PDF s'il en veut un. Le corps texte porte déjà le montant et
+        # l'échéance, donc un client qui n'ouvre pas la pièce jointe sait quand
+        # même ce qu'il doit.
+        msg.add_attachment(html.encode("utf-8"), maintype="text", subtype="html",
+                           filename=filename)
 
     try:
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=config.SMTP_TIMEOUT) as smtp:
@@ -182,3 +193,33 @@ def send_cancellation_mail(booking: dict, site_name: str, reason: str) -> None:
             "UPDATE bookings SET mail_client = ?, mail_error = ? WHERE id = ?",
             (status, err[:500], booking["id"]),
         )
+
+
+def send_invoice(invoice: dict, site_name: str, html: str) -> tuple[str, str]:
+    """Envoie une facture émise au client et inscrit le résultat sur la facture.
+
+    Le résultat est écrit sur la ligne, comme pour les confirmations : une
+    facture partie et une facture qu'on croit partie ne se distinguent
+    autrement par rien, et c'est le chef qui court après le paiement.
+    """
+    status, err = _send(
+        invoice["client"].get("email", ""),
+        f"Facture {invoice['number']} — {site_name}",
+        _invoice_body(invoice, site_name),
+        reply_to=config.MAIL_TO or "",
+        attachment=(f"facture-{invoice['number']}.html", html),
+    )
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE invoices SET mail_status = ?, mail_error = ?, mail_sent_at = ? WHERE id = ?",
+            (status, err[:500],
+             datetime.now(config.TZ).isoformat(timespec="seconds") if status == "sent" else None,
+             invoice["id"]),
+        )
+    return status, err
+
+
+def _invoice_body(invoice: dict, site_name: str) -> str:
+    from . import invoice_html
+
+    return invoice_html.text_summary(invoice, site_name)

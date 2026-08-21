@@ -72,8 +72,11 @@ function chosenBar() {
 function form() {
   const cfg = state.content.booking ?? {};
   const f = state.form;
+  // La valeur envoyée est l'identifiant de la formule, pas son libellé : le
+  // chef peut renommer une formule, la réservation doit rester rattachée à la
+  // bonne. Le serveur fige le libellé au moment de l'enregistrement.
   const options = (state.content.formulas ?? []).map((x) =>
-    `<option value="${escapeHtml(x.name)}"${f.formula === x.name ? ' selected' : ''}>${escapeHtml(x.name)}</option>`
+    `<option value="${escapeHtml(x.id)}"${f.formula === x.id ? ' selected' : ''}>${escapeHtml(x.name)}${x.price ? ` — ${escapeHtml(x.price)}` : ''}</option>`
   ).join('');
   return `
     ${chosenBar()}

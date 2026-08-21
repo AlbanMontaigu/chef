@@ -16,8 +16,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from . import config, content, db
-from .routers import admin, public
+from . import config, content, db, seed
+from .routers import admin, billing as billing_api, public
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -60,8 +60,10 @@ def _page(filename: str) -> str:
 async def lifespan(_: FastAPI):
     db.init()
     site = content.load(force=True)
-    log.info("started - site=%r build=%s mail=%s admin=%s",
-             site.get("name"), BUILD_ID, config.mail_enabled(), bool(config.ADMIN_PASSWORD))
+    seed.apply()
+    log.info("started - site=%r build=%s mail=%s admin=%s seed=%s",
+             site.get("name"), BUILD_ID, config.mail_enabled(), bool(config.ADMIN_PASSWORD),
+             config.SEED_DEMO)
     # Both of these are survivable but leave the site half-functional, so they
     # are shouted at startup rather than discovered at the first booking.
     if not config.ADMIN_PASSWORD:
@@ -106,6 +108,7 @@ def on_error(request: Request, exc: Exception) -> JSONResponse:
 
 app.include_router(public.router)
 app.include_router(admin.router)
+app.include_router(billing_api.router)
 
 
 @app.get("/v/{build}/{path:path}", include_in_schema=False)

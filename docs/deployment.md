@@ -46,6 +46,27 @@ Le montage doit apparaître avec `"Destination":"/app/backend/data"`.
 | `PUBLIC_URL` | `https://chef.montaigu.org` | liens des e-mails cassés, cookie non `Secure` |
 | `TZ` | `Europe/Paris` | défaut `Europe/Paris` |
 | `LOG_LEVEL` | `INFO` | défaut `INFO` |
+| `VAT_RATE_BP` | taux de TVA en points de base (`2000` = 20 %) | défaut `0` : la facture porte la mention de franchise au lieu d'une ligne de TVA |
+| `VAT_NOTE` | mention imprimée quand `VAT_RATE_BP` vaut 0 | défaut « TVA non applicable, art. 293 B du CGI » |
+| `INVOICE_PREFIX` | préfixe des numéros de facture | défaut `F` (`F2026-001`) |
+| `PAYMENT_TERMS_DAYS` | échéance proposée sur un nouveau brouillon | défaut `30` |
+| `SEED_DEMO` | pose le jeu de démonstration | défaut : allumé en `DEV`, **éteint en production** |
+
+### TVA — à confirmer avant la première vraie facture
+
+`VAT_RATE_BP = 0` n'est pas un choix fiscal, c'est un refus de deviner : le
+régime dépend du statut réel du chef. En franchise en base (micro-entreprise
+sous les seuils), le défaut est correct et la facture porte la mention
+d'exonération. Dès que le chef est assujetti, poser le taux ici. Le taux est
+**recopié sur chaque facture à l'émission** : le changer n'altère aucune
+facture déjà partie.
+
+### Le jeu de démonstration ne doit pas s'allumer en production
+
+`SEED_DEMO` est éteint hors `DEV`. Même allumé par erreur, il refuse de semer
+dès qu'une vraie réservation existe et retire ses propres exemples — mais sur
+une base encore vierge, il remplirait le back-office de fausses factures.
+Ne pas le poser dans Coolify.
 
 `ADMIN_PASSWORD` et `SMTP_HOST` manquantes sont hurlées au démarrage
 (`WARNING` dans les logs) et signalées dans le back-office : le site

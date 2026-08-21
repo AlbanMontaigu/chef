@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, config, content, db, mailer
+from .. import auth, billing, config, content, db, mailer
 
 log = logging.getLogger("chef.admin")
 
@@ -15,9 +15,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 SERVICES = ("midi", "soir")
 
 
-def require_admin(request: Request) -> None:
-    if not auth.is_authenticated(request):
-        raise HTTPException(401, "Session expirée. Reconnecte-toi.")
+# Partagée avec le routeur de facturation, définie dans auth.py.
+require_admin = auth.require_admin
 
 
 class LoginIn(BaseModel):
@@ -177,20 +176,63 @@ def list_bookings(status: str = "confirmed", limit: int = 200) -> dict:
     with db.cursor() as conn:
         rows = conn.execute(
             f"""
-            SELECT b.*, s.date, s.service
-            FROM bookings b JOIN slots s ON s.id = b.slot_id
+            SELECT b.*, s.date, s.service,
+                   (SELECT COALESCE(SUM(p.amount_cents), 0) FROM payments p
+                     WHERE p.booking_id = b.id) AS paid_cents,
+                   i.id AS invoice_id, i.number AS invoice_number,
+                   i.status AS invoice_status, i.total_cents AS invoice_total_cents,
+                   i.mail_status AS invoice_mail_status
+            FROM bookings b
+            JOIN slots s ON s.id = b.slot_id
+            LEFT JOIN invoices i ON i.booking_id = b.id AND i.status <> 'cancelled'
             {where}
             ORDER BY s.date ASC, s.service ASC
             LIMIT ?
             """,
             (*params, limit),
         ).fetchall()
-    bookings = [dict(r) for r in rows]
+        bookings = [_with_billing(conn, dict(r)) for r in rows]
     # Anything whose mail did not go out is an open loop the chef must know
     # about: the client may be expecting a confirmation that never arrived.
     issues = [b for b in bookings if "failed" in (b["mail_client"], b["mail_chef"])
               or "disabled" in (b["mail_client"], b["mail_chef"])]
     return {"bookings": bookings, "mail_issues": len(issues)}
+
+
+@router.get("/formula-options", dependencies=[Depends(require_admin)])
+def formula_options() -> dict:
+    """Formules actives, pour les listes déroulantes du back-office."""
+    with db.cursor() as conn:
+        return {"formulas": [
+            {"id": r["id"], "slug": r["slug"], "name": r["name"],
+             "pricing": r["pricing"], "price_cents": r["price_cents"]}
+            for r in billing.formula_rows(conn)
+        ]}
+
+
+def _with_billing(conn, booking: dict) -> dict:
+    """Ajoute l'état de facturation à une réservation listée.
+
+    Le montant dû n'existe qu'à partir d'une facture émise : un brouillon est
+    une intention, pas une créance, et l'afficher comme un impayé enverrait le
+    chef relancer un client qui n'a rien reçu.
+    """
+    paid = int(booking.pop("paid_cents", 0) or 0)
+    status = booking.get("invoice_status")
+    total = None
+    if status == "draft":
+        total = billing.lines_total(billing.lines_of(conn, booking["invoice_id"]))
+    elif status == "issued":
+        total = int(booking["invoice_total_cents"] or 0)
+    due = total if status == "issued" else None
+    booking["invoice_total_cents"] = total
+    booking["billing"] = {
+        "paid_cents": paid,
+        "due_cents": due,
+        "balance_cents": None if due is None else due - paid,
+        "state": billing.payment_state(due, paid),
+    }
+    return booking
 
 
 class CancelIn(BaseModel):

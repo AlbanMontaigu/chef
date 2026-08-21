@@ -1,12 +1,22 @@
 import { request } from '../js/api.js';
 import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
-         todayISO, SERVICE_LABEL } from '../js/util.js';
+         todayISO, formatAmount, parseAmount, SERVICE_LABEL,
+         BILLING_STATE_LABEL } from '../js/util.js';
+import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
+         captureDraft, draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const SERVICES = ['midi', 'soir'];
 
+const TABS = [
+  ['agenda', 'Agenda'],
+  ['facturation', 'Facturation'],
+  ['formules', 'Formules'],
+];
+
 const view = {
+  tab: 'agenda',
   authenticated: false,
   configured: true,
   mailEnabled: true,
@@ -30,6 +40,7 @@ const api = {
   bookings: () => request('/api/admin/bookings?status=confirmed'),
   cancel: (id, reason) => request(`/api/admin/bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   resend: (id) => request(`/api/admin/bookings/${id}/resend`, { method: 'POST' }),
+  ...billingApi,
 };
 
 const monthBounds = () => {
@@ -63,11 +74,18 @@ function summary() {
   const openFree = view.slots.filter((s) => !s.booking_id && s.date >= today).length;
   const issues = view.bookings.filter((b) =>
     [b.mail_client, b.mail_chef].some((s) => s === 'failed' || s === 'disabled')).length;
+  // Un repas déjà servi et non facturé est de l'argent oublié, pas une tâche
+  // en cours : il ne compte qu'une fois la date passée.
+  const toBill = view.bookings.filter((b) => b.date < today && !b.invoice_id).length;
   const cards = [
     `<div class="stat"><b>${upcoming.length}</b><s>réservation${upcoming.length > 1 ? 's' : ''} à venir</s></div>`,
     `<div class="stat"><b>${covers}</b><s>couverts à préparer</s></div>`,
     `<div class="stat"><b>${openFree}</b><s>créneau${openFree > 1 ? 'x' : ''} libre${openFree > 1 ? 's' : ''} ce mois</s></div>`,
     issues ? `<div class="stat alert"><b>${issues}</b><s>e-mail${issues > 1 ? 's' : ''} non parti${issues > 1 ? 's' : ''}</s></div>` : '',
+    // Deux repères d'argent, seulement quand ils ont quelque chose à dire :
+    // une tuile « 0 € en attente » occupe la place sans rien apprendre.
+    toBill ? `<div class="stat"><b>${toBill}</b><s>repas passé${toBill > 1 ? 's' : ''} à facturer</s></div>` : '',
+    billing.outstanding > 0 ? `<div class="stat alert"><b>${escapeHtml(formatAmount(billing.outstanding))}</b><s>en attente de règlement</s></div>` : '',
   ].filter(Boolean).join('');
   return `<div class="summary">${cards}</div>`;
 }
@@ -172,6 +190,20 @@ function mailBadge(b) {
   return '<span class="badge neutral">envoi en cours…</span>';
 }
 
+/* Une ligne, pas un tableau de bord : le chef veut savoir en passant si ce
+   repas est facturé et payé. Le détail est dans le dossier. */
+function billingLine(b) {
+  const bill = b.billing ?? {};
+  if (!b.invoice_id) return 'Pas de facture';
+  if (b.invoice_status === 'draft') {
+    return `Brouillon de facture — ${escapeHtml(formatAmount(b.invoice_total_cents ?? 0))}`;
+  }
+  const label = BILLING_STATE_LABEL[bill.state] ?? bill.state ?? '';
+  const rest = bill.balance_cents;
+  const tail = rest > 0 ? ` — reste ${escapeHtml(formatAmount(rest))}` : '';
+  return `Facture ${escapeHtml(b.invoice_number ?? '')} — ${escapeHtml(formatAmount(bill.due_cents ?? 0))} · ${escapeHtml(label)}${tail}`;
+}
+
 function bookingsPanel() {
   const today = todayISO();
   const upcoming = view.bookings.filter((b) => b.date >= today);
@@ -185,13 +217,24 @@ function bookingsPanel() {
       <p class="who"><strong>${escapeHtml(b.name)}</strong> · <a href="mailto:${escapeHtml(b.email)}">${escapeHtml(b.email)}</a>${b.phone ? ` · <a href="tel:${escapeHtml(b.phone.replace(/\s/g, ''))}">${escapeHtml(b.phone)}</a>` : ''}</p>
       <p class="meta">${escapeHtml(b.address || 'adresse non renseignée')} · ${escapeHtml(b.formula || 'formule à définir')} · réf. ${escapeHtml(b.ref)}</p>
       ${b.message ? `<p class="quote">« ${escapeHtml(b.message)} »</p>` : ''}
+      <p class="meta">${billingLine(b)}</p>
       <div class="actions">
         ${mailBadge(b)}
+        <button class="btn" data-folder-open="${b.id}">Facturation</button>
         <button class="btn danger" data-cancel="${b.id}">Annuler</button>
         <button class="btn" data-resend="${b.id}">Renvoyer les e-mails</button>
       </div>
     </div>`).join('');
   return `<div class="panel"><h2>Réservations à venir</h2><p class="hint">${upcoming.length} au total.</p>${cards}</div>`;
+}
+
+function tabBody() {
+  if (view.tab === 'formules') return formulasPanel();
+  if (view.tab === 'facturation') return invoicesPanel();
+  return `<div class="admin-split">
+      <div>${calendarPanel()}</div>
+      <div>${bookingsPanel()}${slotsPanel()}</div>
+    </div>`;
 }
 
 function render() {
@@ -200,6 +243,8 @@ function render() {
     `<div class="panel" style="border-color:#e8c0b5;background:#fdf1ed;margin-bottom:1.5rem">
        <p class="error" style="margin:0">L'envoi d'e-mails est désactivé côté serveur (SMTP_HOST). Les réservations sont bien enregistrées, mais personne ne reçoit de confirmation.</p>
      </div>`;
+  const tabs = TABS.map(([key, label]) =>
+    `<button class="tab${view.tab === key ? ' active' : ''}" data-tab="${key}">${escapeHtml(label)}</button>`).join('');
   app.innerHTML = `
     <div class="admin-head">
       <div class="wrap">
@@ -209,16 +254,15 @@ function render() {
           <button class="btn" data-logout="1">Déconnexion</button>
         </div>
       </div>
+      <div class="wrap"><nav class="tabs">${tabs}</nav></div>
     </div>
     <div class="admin-body"><div class="wrap">
       ${view.flash ? `<div class="panel" style="margin-bottom:1.5rem;border-color:#cfdab8;background:var(--olive-soft)"><p style="margin:0;font-weight:600">${escapeHtml(view.flash)}</p></div>` : ''}
       ${view.error ? `<div class="panel" style="margin-bottom:1.5rem"><p class="error" style="margin:0" role="alert">${escapeHtml(view.error)}</p></div>` : ''}
       ${mailWarn}
       ${summary()}
-      <div class="admin-split">
-        <div>${calendarPanel()}</div>
-        <div>${bookingsPanel()}${slotsPanel()}</div>
-      </div>
+      ${billing.folder ? folderPanel() : ''}
+      ${tabBody()}
     </div></div>`;
 }
 
@@ -227,16 +271,48 @@ function render() {
 async function refresh() {
   const [start, end] = monthBounds();
   try {
-    const [slots, bookings] = await Promise.all([api.slots(start, end), api.bookings()]);
+    // Les factures sont toujours rechargées, même hors de l'onglet : le
+    // résumé en tête affiche l'encours sur toutes les pages, et un encours
+    // périmé est une information fausse plutôt qu'absente.
+    const [slots, bookings, invoices] = await Promise.all([
+      api.slots(start, end), api.bookings(), api.invoices(),
+    ]);
     view.slots = slots.slots;
     view.firstBookable = slots.first_bookable;
     view.bookings = bookings.bookings;
+    billing.invoices = invoices.invoices;
+    billing.outstanding = invoices.outstanding_cents;
+    if (view.tab === 'formules') {
+      const data = await api.formulas();
+      billing.formulas = data.formulas;
+      billing.pricingKinds = data.pricing_kinds;
+    }
+    if (billing.folder) {
+      const id = billing.folder.booking.id;
+      const booking = view.bookings.find((b) => b.id === id) ?? billing.folder.booking;
+      billing.folder = { booking, data: await api.folder(id) };
+    }
     view.error = '';
   } catch (err) {
     if (err.status === 401) view.authenticated = false;
     view.error = err.message;
   }
   render();
+}
+
+async function openFolder(bookingId) {
+  let booking = view.bookings.find((b) => b.id === bookingId);
+  if (!booking) {
+    // Ouvert depuis l'onglet Facturation : la réservation peut être annulée
+    // ou hors de la liste « confirmées ». On la reconstruit depuis la facture
+    // plutôt que d'afficher un dossier sans en-tête.
+    const invoice = billing.invoices.find((i) => i.booking_id === bookingId);
+    booking = invoice ? { id: bookingId, name: invoice.name, date: invoice.date,
+                          service: invoice.service, guests: invoice.guests,
+                          ref: invoice.ref, formula: '' } : { id: bookingId, name: '', date: todayISO(), service: '', guests: 0, ref: '' };
+  }
+  billing.folder = { booking, data: await api.folder(bookingId) };
+  return '';
 }
 
 async function act(fn) {
@@ -287,6 +363,63 @@ async function closePicked() {
 // --- Événements ---------------------------------------------------------
 
 app.addEventListener('submit', async (event) => {
+  if (event.target.id === 'draft-form') {
+    event.preventDefault();
+    captureDraft();
+    const id = billing.folder.data.invoice.id;
+    act(async () => { await api.updateInvoice(id, draftPayload()); return 'Brouillon enregistré.'; });
+    return;
+  }
+
+  if (event.target.id === 'payment-form') {
+    event.preventDefault();
+    const form = event.target;
+    const cents = parseAmount(form.elements.amount.value);
+    if (cents === null || cents === 0) {
+      // Refuser ici plutôt que d'envoyer : un montant mal tapé qui part en
+      // 0 € s'inscrit dans l'historique et fausse un solde.
+      view.error = "Montant illisible. Écrivez-le en euros, par exemple 120 ou 120,50.";
+      view.flash = '';
+      render();
+      return;
+    }
+    const body = {
+      amount: form.elements.amount.value,
+      kind: form.elements.kind.value,
+      method: form.elements.method.value,
+      received_on: form.elements.received_on.value,
+      note: form.elements.note.value,
+    };
+    act(async () => {
+      const res = await api.addPayment(Number(form.dataset.booking), body);
+      return `Encaissement de ${formatAmount(res.amount_cents)} enregistré.`;
+    });
+    return;
+  }
+
+  const formulaForm = event.target.closest('[data-formula-form]');
+  if (formulaForm) {
+    event.preventDefault();
+    const f = formulaForm.elements;
+    const body = {
+      name: f.name.value.trim(),
+      description: f.description.value.trim(),
+      pricing: f.pricing.value,
+      price: f.price.value || '0',
+      min_guests: Number(f.min_guests.value) || 0,
+      active: f.active.checked,
+      position: Number(f.position.value) || 0,
+    };
+    const id = formulaForm.dataset.formulaForm;
+    act(async () => {
+      if (id === 'new') await api.createFormula(body);
+      else await api.updateFormula(Number(id), body);
+      billing.editingFormula = null;
+      return id === 'new' ? 'Formule créée.' : 'Formule mise à jour.';
+    });
+    return;
+  }
+
   if (event.target.id !== 'login-form') return;
   event.preventDefault();
   const password = event.target.elements.password.value;
@@ -304,6 +437,118 @@ app.addEventListener('submit', async (event) => {
 });
 
 app.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-tab]');
+  if (tab) {
+    view.tab = tab.dataset.tab;
+    view.flash = '';
+    refresh();
+    return;
+  }
+
+  const openFolderBtn = event.target.closest('[data-folder-open]');
+  if (openFolderBtn) {
+    act(() => openFolder(Number(openFolderBtn.dataset.folderOpen)));
+    return;
+  }
+
+  if (event.target.closest('[data-folder-close]')) {
+    billing.folder = null;
+    view.flash = '';
+    render();
+    return;
+  }
+
+  const addLine = event.target.closest('[data-line-add]');
+  if (addLine) {
+    captureDraft();
+    billing.folder.data.invoice.lines.push({ label: '', quantity: 1, unit_cents: 0 });
+    render();
+    return;
+  }
+
+  const removeLine = event.target.closest('[data-line-remove]');
+  if (removeLine) {
+    captureDraft();
+    const lines = billing.folder.data.invoice.lines;
+    // Toujours au moins une ligne : une facture sans ligne ne s'émet pas, et
+    // un éditeur vide n'offre plus aucune prise pour repartir.
+    if (lines.length > 1) lines.splice(Number(removeLine.dataset.lineRemove), 1);
+    render();
+    return;
+  }
+
+  const createInvoice = event.target.closest('[data-invoice-create]');
+  if (createInvoice) {
+    act(async () => {
+      await api.createInvoice(Number(createInvoice.dataset.invoiceCreate));
+      return 'Brouillon créé. Vérifiez les lignes avant d\'émettre.';
+    });
+    return;
+  }
+
+  const issue = event.target.closest('[data-invoice-issue]');
+  if (issue) {
+    captureDraft();
+    const id = Number(issue.dataset.invoiceIssue);
+    if (!confirm("Émettre la facture ?\n\nElle reçoit un numéro définitif et ne pourra plus être modifiée.")) return;
+    act(async () => {
+      // Enregistrer avant d'émettre : sinon on figerait la version d'avant la
+      // dernière frappe, sans que rien ne le signale.
+      await api.updateInvoice(id, draftPayload());
+      const res = await api.issueInvoice(id);
+      return `Facture ${res.number} émise (${formatAmount(res.total_cents)}). Vous pouvez l'envoyer au client.`;
+    });
+    return;
+  }
+
+  const cancelInvoice = event.target.closest('[data-invoice-cancel]');
+  if (cancelInvoice) {
+    const id = Number(cancelInvoice.dataset.invoiceCancel);
+    const isDraft = billing.folder?.data?.invoice?.editable;
+    const reason = isDraft ? ''
+      : prompt("Annuler cette facture ?\nSon numéro reste consommé et le motif lui reste attaché.\n\nMotif :");
+    if (!isDraft && reason === null) return;
+    act(async () => {
+      await api.cancelInvoice(id, reason ?? '');
+      return isDraft ? 'Brouillon jeté.' : 'Facture annulée. Vous pouvez en créer une nouvelle.';
+    });
+    return;
+  }
+
+  const send = event.target.closest('[data-invoice-send]');
+  if (send) {
+    act(async () => {
+      const res = await api.sendInvoice(Number(send.dataset.invoiceSend));
+      return `Facture ${res.queued} en cours d'envoi. Le résultat s'affichera ici.`;
+    });
+    return;
+  }
+
+  const deletePayment = event.target.closest('[data-payment-delete]');
+  if (deletePayment) {
+    if (!confirm('Supprimer cet encaissement ? Le solde sera recalculé.')) return;
+    act(async () => {
+      await api.deletePayment(Number(deletePayment.dataset.paymentDelete));
+      return 'Encaissement supprimé.';
+    });
+    return;
+  }
+
+  const formulaNew = event.target.closest('[data-formula-new]');
+  if (formulaNew) { billing.editingFormula = 'new'; render(); return; }
+
+  const formulaEdit = event.target.closest('[data-formula-edit]');
+  if (formulaEdit) { billing.editingFormula = Number(formulaEdit.dataset.formulaEdit); render(); return; }
+
+  if (event.target.closest('[data-formula-cancel]')) { billing.editingFormula = null; render(); return; }
+
+  const formulaDelete = event.target.closest('[data-formula-delete]');
+  if (formulaDelete) {
+    if (!confirm('Supprimer cette formule ? Elle disparaît du site.')) return;
+    act(async () => { await api.deleteFormula(Number(formulaDelete.dataset.formulaDelete)); return 'Formule supprimée.'; });
+    return;
+  }
+
   const nav = event.target.closest('[data-nav]');
   if (nav) {
     let { year, month } = view.month;

@@ -14,7 +14,7 @@ import secrets
 import time
 from hashlib import sha256
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from . import config
 
@@ -109,3 +109,14 @@ def client_ip(request: Request) -> str:
 
 def secure_cookies() -> bool:
     return config.PUBLIC_URL.startswith("https://")
+
+
+def require_admin(request: Request) -> None:
+    """Dépendance FastAPI partagée par tous les routeurs du back-office.
+
+    Elle vit ici plutôt que dans un routeur pour qu'un nouveau routeur
+    protégé n'ait pas à importer l'ancien : un jour, quelqu'un ne le ferait
+    pas et exposerait des factures.
+    """
+    if not is_authenticated(request):
+        raise HTTPException(401, "Session expirée. Reconnecte-toi.")
