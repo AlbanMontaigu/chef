@@ -43,7 +43,17 @@ vraie réservation existe. Pour rejouer un jeu enrichi, incrémenter
 `SEED_VERSION` dans `backend/seed.py`.
 
 ```sh
-.venv/bin/python tools/check-seed.py   # 42 états attendus, sort en 1 s'il en manque
+.venv/bin/python tools/check-seed.py   # 52 états attendus, sort en 1 s'il en manque
+```
+
+Le semis refuse de rejouer dès qu'une réservation non-démo existe — c'est ce
+qui empêche des exemples de se mélanger à de vraies réservations. Sur une
+instance qui sert de bac à sable, ces « vraies » réservations sont des essais,
+et il faut repartir de zéro :
+
+```sh
+.venv/bin/python tools/reset-db.py              # inventaire de ce qui serait détruit
+DEV=1 .venv/bin/python tools/reset-db.py --yes  # vide et re-sème
 ```
 
 ## Modifier le contenu du site
