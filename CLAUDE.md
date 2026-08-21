@@ -55,6 +55,23 @@ book one directly. Same shape as the `flip7` app it is modelled on: a
 - **Cancelling is the only way to free a booked slot.** `DELETE /slots/{id}`
   refuses a booked slot on purpose: deleting it would cascade the booking away
   without telling the client. Cancel first — that mails them.
+- **The client's link is a secret, the reference is not.** `bookings.ref`
+  (`R-XXXXXX`) is built from a 25-letter alphabet so it can be dictated over
+  the phone — which also makes it guessable. It must never address a booking.
+  `bookings.token` (128 bits, unique index) is what `/r/{token}` uses. Do not
+  "simplify" the client page onto `ref`.
+- **A reminder re-checks its own premise at send time.** `reminders.flush()`
+  reloads the target and asks whether the reason still holds — cancelled
+  booking, settled invoice, meal already invoiced. Skipping that check means
+  mailing stale truths, and dunning a client who has already paid costs more
+  than saying nothing. The at-most-once guarantee lives in the unique index on
+  (kind, target, due_on), not in Python.
+- **The reminder queue is read-only in the back-office.** It is the record of
+  what the system decided to send. Making it editable would destroy its value
+  as evidence — "did the dunning go out?" would stop having a reliable answer.
+- **An allergy is not a preference.** `backend/diets.py` keeps the `allergy`
+  flag, and every surface separates the two. Collapsing them into one list of
+  checkboxes loses the distinction that matters most.
 
 ## Two calendars, on purpose
 
@@ -169,8 +186,16 @@ because an address does not move.
 ## The demo seed, and keeping it honest
 
 `backend/seed.py` fills an empty database with a set of examples that make the
-back-office readable: formulas, open slots, bookings in every state, payments,
-a paid invoice, a partly-paid one, a draft, and one cancelled-then-reissued.
+back-office readable: formulas, open slots, bookings in every state, declared
+diets, payments, a paid invoice, a partly-paid one, a draft, one
+cancelled-then-reissued, menus (sent, draft, failed to send), quote requests in
+all four statuses, and reminders already played out.
+
+Some states cannot be produced on demand — a reminder that was *sent*, one that
+*failed for good*, one *abandoned* because its reason disappeared. Those are
+seeded directly, while the planner itself is run for real against the demo data
+by `check-seed.py`. Asserting that a planner can produce its own kinds is worth
+more than assuming it.
 
 - The seller identity printed on demo invoices is fictitious and lives in
   `seed.DEMO_LEGAL` (used only while `SEED_DEMO` is on). Without it every demo
@@ -186,9 +211,9 @@ a paid invoice, a partly-paid one, a draft, and one cancelled-then-reissued.
 
 **`tools/check-seed.py` is what makes that rule enforceable.** It seeds a
 throwaway database and asserts that every state the interface can display is
-actually represented — 42 of them today, from "formula priced per guest with
-no amount entered" to "invoice overdue and unpaid". Run it after any change to
-the domain:
+actually represented — 125 of them today, from "formula priced per guest with
+no amount entered" to "quote with a date in plain words but no exact day".
+Run it after any change to the domain:
 
 ```sh
 .venv/bin/python tools/check-seed.py
@@ -207,6 +232,40 @@ commit.
 > production, on a real booking. The examples are the cheapest test surface
 > this repo has; they are only worth something while they still describe what
 > the code does.
+
+## Money: what is declarable is what was *cashed*
+
+`backend/accounting.py` totals `payments.received_on`, never
+`invoices.issued_on`. The micro-entrepreneur regime is cash-basis accounting:
+an invoice issued in March and paid in April belongs to Q2. Both views are
+shown side by side, but the cashed figure is the one named and placed first —
+a table leading with the invoiced amount would invite declaring a wrong number.
+
+CSV exports are opened in a French spreadsheet. Three details decide whether
+they are usable at all, and none is cosmetic: semicolon separator (the comma is
+the decimal separator), UTF-8 BOM (without it Excel reads latin-1 and mangles
+every accent), and neutralising cells that start with `=`, `+`, `-` or `@`
+(they execute as formulas, and this content comes from a public form). A
+negative amount keeps its sign; a label gets an apostrophe.
+
+## Two things the demo seed can never catch
+
+`tools/check-seed.py` mostly asserts that the seed represents every displayable
+state. Two of its checks do something else, and they are there because a seed
+always starts from empty values:
+
+- **Settings must survive a partial save.** A real regression: the demo
+  fallback imported `seed` inside the `chef_address` branch, and the
+  `area_postcodes` branch used it. As soon as an address was stored without a
+  zone, `all_settings()` raised `UnboundLocalError` — a 500 on `/api/content`,
+  i.e. the whole public site.
+- **The settings form model must match `settings.DEFAULTS` exactly.**
+  `write_settings` once persisted only `chef_address` while validating and
+  discarding the zone, and answered `updated: true`. A field that renders,
+  appears to save, and does nothing.
+
+When adding a setting: add it to `DEFAULTS`, to `SettingsIn`, and let
+`write_settings` persist the whole model — never field by field.
 
 ## Configuration is entirely environment-driven
 
@@ -227,3 +286,9 @@ confirmation is ever sent).
 - Slot ownership: only the back-office creates or closes slots.
 - The `ref` given to the client (`R-XXXXXX`) is generated server-side from an
   alphabet with no look-alike characters, so it can be read over the phone.
+- Client self-cancellation: `POST /api/r/{token}/cancel` re-runs the whole
+  eligibility check inside the writing transaction. The button on the page is
+  display only.
+- Travel zone: `settings.in_area()` decides, and `settings.area_note()` derives
+  what the site announces from that same list. Never write the announced zone
+  by hand in `content/site.json`.

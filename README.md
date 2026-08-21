@@ -5,10 +5,33 @@ image Docker : FastAPI sert l'API et le front statique, SQLite stocke les
 créneaux et les réservations.
 
 - **Site public** — présentation, formules, à propos, calendrier des dates
-  disponibles, formulaire de réservation.
-- **Back-office** (`/admin`) — trois onglets : l'**agenda** (ouvrir et fermer
-  les créneaux, suivre les réservations), la **facturation** (factures,
-  encaissements, soldes) et les **formules** (tarifs) et les **réglages**.
+  disponibles, formulaire de réservation, et un formulaire de **demande de
+  devis** pour tout ce qui n'entre pas dans le calendrier (date non ouverte,
+  mariage, gros buffet).
+- **Page du client** (`/r/<jeton>`) — le lien reçu par e-mail : détail de la
+  réservation, menu, facture, et annulation en autonomie jusqu'à quelques
+  jours avant le repas. Le jeton est un secret de 128 bits, distinct de la
+  référence dictable au téléphone.
+- **Back-office** (`/admin`) — sept onglets : **agenda** (créneaux et
+  réservations), **facturation**, **formules**, **devis**, **comptabilité**,
+  **relances** et **réglages**.
+- **Régimes et allergies** — déclarés à la réservation dans un catalogue
+  fermé, avec le nombre de convives concernés. Les allergies sont signalées
+  comme telles, jusque dans le sujet de l'e-mail au chef.
+- **Menus** — le menu d'un repas se compose depuis le dossier, s'envoie au
+  client et apparaît sur sa page. Le modifier après envoi le repasse en
+  brouillon : le client connaît l'ancienne version tant qu'on ne lui renvoie
+  pas la nouvelle.
+- **Rappels et relances** — rappel au client avant le repas, relance des
+  factures échues, signal au chef sur un repas servi non facturé. Chaque envoi
+  revérifie sa raison d'être juste avant de partir.
+- **Zone de déplacement** — des débuts de code postal, saisis dans Réglages.
+  Hors zone, la réservation est refusée avec une invitation à demander un
+  devis. La phrase affichée aux clients est dérivée de cette liste, il n'y a
+  pas deux endroits à tenir à jour.
+- **Comptabilité** — encaissé par trimestre (la base déclarable au régime
+  micro), ventilation par moyen de paiement, export CSV des encaissements et
+  des factures, prêt pour un tableur français.
 - **Trajet** — l'adresse de départ du chef se saisit dans Réglages ; chaque
   réservation propose alors une estimation de durée (Nominatim + OSRM, calculée
   à la demande et conservée) et le lien vers l'application de cartes. L'adresse
@@ -18,9 +41,10 @@ créneaux et les réservations.
   un numéro séquentiel définitif, s'imprime et s'envoie au client. Les
   encaissements se saisissent au fil de l'eau ; le solde est toujours leur
   somme, jamais un compteur tenu à part.
-- **E-mails** — confirmation au client, notification au chef, e-mail
-  d'annulation, envoi de facture. Chaque envoi est tracé et les échecs sont
-  affichés dans le back-office.
+- **E-mails** — confirmation, notification au chef, annulation (par le chef ou
+  par le client), accusé de devis, menu, rappel avant repas, relance d'impayé,
+  envoi de facture. Chaque envoi est tracé et les échecs sont affichés dans le
+  back-office.
 
 ## Démarrer en local
 
@@ -43,7 +67,7 @@ vraie réservation existe. Pour rejouer un jeu enrichi, incrémenter
 `SEED_VERSION` dans `backend/seed.py`.
 
 ```sh
-.venv/bin/python tools/check-seed.py   # 52 états attendus, sort en 1 s'il en manque
+.venv/bin/python tools/check-seed.py   # 125 états attendus, sort en 1 s'il en manque
 ```
 
 Le semis refuse de rejouer dès qu'une réservation non-démo existe — c'est ce
@@ -59,8 +83,9 @@ DEV=1 .venv/bin/python tools/reset-db.py --yes  # vide et re-sème
 ## Modifier le contenu du site
 
 Tout le texte est dans [`content/site.json`](content/site.json) : nom, accroche,
-texte « à propos », zone d'intervention, bornes de réservation, et le bloc
-`legal` qui alimente l'en-tête des factures. Éditer ce fichier et pousser
+texte « à propos », zone d'intervention, bornes de réservation (`min_guests`,
+`max_guests`, `lead_days`, `cancel_days`) et le bloc `legal` qui alimente
+l'en-tête des factures. Éditer ce fichier et pousser
 suffit — aucun code à toucher.
 
 **Les formules et leurs tarifs ne sont plus dans ce fichier** : elles se
