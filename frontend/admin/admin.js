@@ -73,6 +73,13 @@ function loginView() {
     </div>`;
 }
 
+/* Les tuiles ne s'affichent QUE sur l'agenda, qui est la page d'accueil du
+   back-office et la seule qui ait vocation à résumer l'ensemble. Ailleurs
+   elles étaient du bruit répété : chaque onglet porte déjà, en tête de son
+   propre panneau, le seul chiffre qui le concerne — l'encours sur Facturation,
+   les demandes à traiter sur Devis, les rappels en échec sur Relances, et
+   Comptabilité a ses propres totaux. Deux affichages du même nombre sur une
+   même page, c'est un de trop, et c'est celui qu'on oublie de mettre à jour. */
 function summary() {
   const today = todayISO();
   const upcoming = view.bookings.filter((b) => b.date >= today);
@@ -275,7 +282,7 @@ function render() {
       ${view.flash ? `<div class="panel" style="margin-bottom:1.5rem;border-color:#cfdab8;background:var(--olive-soft)"><p style="margin:0;font-weight:600">${escapeHtml(view.flash)}</p></div>` : ''}
       ${view.error ? `<div class="panel" style="margin-bottom:1.5rem"><p class="error" style="margin:0" role="alert">${escapeHtml(view.error)}</p></div>` : ''}
       ${mailWarn}
-      ${summary()}
+      ${view.tab === 'agenda' ? summary() : ''}
       ${billing.folder ? folderPanel() : ''}
       ${tabBody()}
     </div></div>`;
@@ -286,9 +293,10 @@ function render() {
 async function refresh() {
   const [start, end] = monthBounds();
   try {
-    // Les factures sont toujours rechargées, même hors de l'onglet : le
-    // résumé en tête affiche l'encours sur toutes les pages, et un encours
-    // périmé est une information fausse plutôt qu'absente.
+    // Factures et devis sont toujours rechargés, même hors de leur onglet :
+    // les tuiles de l'agenda en dépendent (encours, demandes à traiter), et
+    // l'agenda est justement la page qu'on ouvre en premier. Un chiffre périmé
+    // y serait une information fausse plutôt qu'absente.
     // Les réglages accompagnent chaque rafraîchissement : le lien « Trajet »
     // des cartes en dépend, et il ne peut pas attendre que le chef passe par
     // l'onglet Réglages pour apparaître.
@@ -310,9 +318,6 @@ async function refresh() {
     if (view.tab === 'comptabilite') {
       billing.accounting = await api.accounting(billing.accountingYear ?? new Date().getFullYear());
     }
-    // Les devis sont TOUJOURS rechargés, même hors de l'onglet : le compte de
-    // demandes à traiter s'affiche dans le résumé de tête, sur toutes les
-    // pages, et un compte périmé est une information fausse plutôt qu'absente.
     const quotes = await api.quotes();
     billing.quotes = quotes;
     billing.quoteStatuses = quotes.statuses;
