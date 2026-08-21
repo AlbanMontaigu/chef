@@ -37,6 +37,10 @@ encaissements. Il ne touche que ses propres lignes et s'efface dès qu'une
 vraie réservation existe. Pour rejouer un jeu enrichi, incrémenter
 `SEED_VERSION` dans `backend/seed.py`.
 
+```sh
+.venv/bin/python tools/check-seed.py   # 42 états attendus, sort en 1 s'il en manque
+```
+
 ## Modifier le contenu du site
 
 Tout le texte est dans [`content/site.json`](content/site.json) : nom, accroche,

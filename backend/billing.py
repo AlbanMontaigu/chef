@@ -162,6 +162,14 @@ def seller_identity() -> dict:
     site = content.load()
     legal = site.get("legal") or {}
     contact = site.get("contact") or {}
+    if config.SEED_DEMO:
+        # Sans identité, une facture de démonstration s'imprime avec les
+        # PLACEHOLDER du fichier éditorial et ne montre pas ce qu'elle est
+        # censée montrer. Import local : seed.py importe ce module, l'inverse
+        # au niveau module ferait un cycle.
+        from . import seed
+
+        legal = {**legal, **seed.DEMO_LEGAL}
     return {
         "name": legal.get("company_name") or site.get("name") or "",
         "address": legal.get("address") or "",

@@ -127,6 +127,9 @@ nobody can book.
 back-office readable: formulas, open slots, bookings in every state, payments,
 a paid invoice, a partly-paid one, a draft, and one cancelled-then-reissued.
 
+- The seller identity printed on demo invoices is fictitious and lives in
+  `seed.DEMO_LEGAL` (used only while `SEED_DEMO` is on). Without it every demo
+  invoice prints the `PLACEHOLDER` strings and shows nothing.
 - It only ever touches rows it created (`demo = 1`), so it cannot delete a
   real booking. `SEED_DEMO` gates it — on in `DEV`, off elsewhere — and
   turning it off removes the examples on the next start.
@@ -136,9 +139,24 @@ a paid invoice, a partly-paid one, a draft, and one cancelled-then-reissued.
 - `SEED_VERSION` is a single global integer. Bump it and the next start
   replays the set.
 
+**`tools/check-seed.py` is what makes that rule enforceable.** It seeds a
+throwaway database and asserts that every state the interface can display is
+actually represented — 42 of them today, from "formula priced per guest with
+no amount entered" to "invoice overdue and unpaid". Run it after any change to
+the domain:
+
+```sh
+.venv/bin/python tools/check-seed.py
+```
+
+It names exactly what is missing and exits 1. Adding a state to the code means
+adding a line there **and** an example in `backend/seed.py`, in the same
+commit.
+
 > **Standing rule — never let the example data fall behind the features.**
 > Any change that adds a field, a state, or a flow must show up in
-> `backend/seed.py` in the same commit, and `SEED_VERSION` must be bumped.
+> `backend/seed.py` in the same commit, `SEED_VERSION` must be bumped, and
+> `tools/check-seed.py` must cover it.
 > A seed that only covers the nominal case leaves half the interface
 > unexercised, and the first time anyone sees the new state rendered is in
 > production, on a real booking. The examples are the cheapest test surface

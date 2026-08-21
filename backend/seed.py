@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 2
+SEED_VERSION = 3
 _MARKER = "seed_version"
 
 
@@ -35,28 +35,67 @@ def _d(days: int) -> str:
     return (billing.today() + timedelta(days=days)).isoformat()
 
 
+# --- Identité de démonstration ----------------------------------------
+# Entièrement FICTIVE, et c'est le point : sans elle, toute facture de
+# démonstration s'imprime avec les PLACEHOLDER de content/site.json et ne
+# montre pas ce qu'elle est censée montrer. Le SIRET et l'IBAN sont
+# volontairement des suites reconnaissables — personne ne doit pouvoir les
+# prendre pour de vrais. Elle ne sert que quand SEED_DEMO est allumé.
+DEMO_LEGAL = {
+    "company_name": "Camille Rousseau",
+    "status": "Micro-entreprise — chef à domicile",
+    "address": "12 rue des Olivettes, 44000 Nantes",
+    "siret": "12345678900019",
+    "iban": "FR76 1234 5678 9012 3456 7890 189",
+    "bic": "DEMOFRPPXXX",
+    "payment_terms": "Paiement à réception. Pas d'escompte pour paiement anticipé. "
+                     "Pénalités de retard : trois fois le taux d'intérêt légal, "
+                     "indemnité forfaitaire de recouvrement de 40 €.",
+}
+
+
 # --- Le contenu du jeu -------------------------------------------------
-# Chaque entrée existe pour rendre visible un état de l'application : un
-# créneau trop proche, un e-mail en échec, un acompte, une facture annulée
-# puis réémise. Un jeu qui ne montrerait que le cas nominal laisserait la
-# moitié de l'interface non vérifiée.
+# Chaque entrée existe pour rendre visible un état de l'application. Un jeu
+# qui ne montrerait que le cas nominal laisserait la moitié de l'interface non
+# vérifiée -- et le premier rendu d'un état se ferait en production, sur une
+# vraie réservation. `tools/check-seed.py` vérifie que cette liste couvre bien
+# tous les états connus ; l'enrichir sans y passer ne sert à rien.
 
 FORMULAS = [
-    # (slug, nom, description, tarification, prix en centimes, convives mini)
+    # (slug, nom, description, tarification, prix en centimes, convives mini, active)
     ("decouverte", "Menu Découverte",
      "Entrée, plat, dessert. Produits du marché, de saison.",
-     "per_guest", 4500, 4),
+     "per_guest", 4500, 4, 1),
     ("signature", "Menu Signature",
      "Cinq services, pain maison, accords mets-vins possibles.",
-     "per_guest", 7800, 6),
+     "per_guest", 7800, 6, 1),
     ("reception", "Réception",
      "Buffet ou cocktail dînatoire, service compris, à partir de quinze convives.",
-     "quote", 0, 15),
+     "quote", 0, 15, 1),
+    # Forfait, et jamais choisie : c'est la seule que le back-office propose de
+    # supprimer, donc le seul moyen de voir ce bouton.
+    ("atelier", "Atelier cuisine",
+     "Deux heures de cuisine à quatre mains, puis on passe à table.",
+     "fixed", 32000, 0, 1),
+    # Réglée « par convive » sans montant : le site l'affiche « sur devis » et
+    # le back-office doit le signaler comme un tarif oublié.
+    ("brunch", "Brunch du dimanche",
+     "Salé, sucré, viennoiseries maison.",
+     "per_guest", 0, 4, 1),
+    # Retirée du site mais citée par une réservation passée : elle prouve
+    # qu'on désactive au lieu de supprimer, sans casser l'historique.
+    ("hiver", "Menu d'hiver",
+     "Gibier, racines, longues cuissons. Carte de l'an dernier.",
+     "per_guest", 6500, 4, 0),
 ]
 
 SLOTS = [
     # (offset en jours, service, note) -- passé pour l'historique facturé,
     # futur pour le calendrier public.
+    (-52, "soir", ""),
+    (-45, "midi", ""),
+    (-38, "soir", ""),
+    (-31, "midi", ""),
     (-24, "soir", ""),
     (-17, "midi", ""),
     (-10, "soir", ""),
@@ -84,7 +123,7 @@ BOOKINGS = [
             "status": "issued", "issued": -23, "due": 7,
             "lines": [("Menu Signature — dîner du {date}", 8, 7800),
                       ("Accord mets-vins", 8, 1500)],
-            "mail": "sent",
+            "mail": "sent", "notes": "Merci de votre confiance.",
         },
         "payments": [
             ("acompte", 22000, "virement", -22, "Acompte 30 %"),
@@ -127,6 +166,54 @@ BOOKINGS = [
         },
         "payments": [("acompte", 60000, "virement", -8, "")],
     },
+    # Facture émise, échue, RIEN reçu, et l'envoi lui-même a échoué : le pire
+    # cas de suivi, celui qu'il ne faut surtout pas manquer dans une liste.
+    {
+        "key": "impayee", "slot": (-45, "midi"), "ref": "R-P4WXQ7",
+        "name": "Bruno Delalande", "email": "bruno.delalande@example.com",
+        "phone": "06 88 44 09 71", "address": "6 rue du Port, Trentemoult",
+        "guests": 5, "formula": "hiver",
+        "message": "",
+        "mail": ("sent", "sent", ""),
+        "invoice": {
+            "status": "issued", "issued": -44, "due": -14,
+            "lines": [("Menu d'hiver — déjeuner du {date}", 5, 6500)],
+            "mail": "failed", "mail_error": "SMTPRecipientsRefused: 550 mailbox unavailable",
+            "notes": "Deuxième relance envoyée par téléphone.",
+        },
+        "payments": [],
+    },
+    # Facture assujettie à la TVA : la seule qui exerce la ventilation HT/TVA
+    # du rendu. Le taux est figé sur la facture, pas relu dans la config.
+    {
+        "key": "tva", "slot": (-38, "soir"), "ref": "R-J9CMR3",
+        "name": "Atelier Lumen SARL", "email": "compta@example.com",
+        "phone": "02 40 12 88 30", "address": "9 quai de la Fosse, 44000 Nantes",
+        "guests": 14, "formula": "reception",
+        "message": "Dîner d'entreprise, facture au nom de la société.",
+        "mail": ("sent", "sent", ""),
+        "invoice": {
+            "status": "issued", "issued": -37, "due": -7, "vat_rate_bp": 2000,
+            "lines": [("Réception — dîner du {date}, 14 convives", 1, 138000),
+                      ("Personnel de service supplémentaire", 2, 12000)],
+            "mail": "sent", "notes": "Bon de commande n° 2026-0417.",
+        },
+        "payments": [("solde", 162000, "autre", -30, "Virement société, bordereau 4417")],
+    },
+    # Client qui a arrondi au-dessus : trop-perçu, à rendre ou à déduire.
+    {
+        "key": "trop_percu", "slot": (-52, "soir"), "ref": "R-T6HKV2",
+        "name": "Hélène Nguyen", "email": "helene.nguyen@example.com",
+        "phone": "06 51 30 22 47", "address": "2 allée des Tanneurs, Nantes",
+        "guests": 4, "formula": "decouverte", "message": "",
+        "mail": ("sent", "sent", ""),
+        "invoice": {
+            "status": "issued", "issued": -51, "due": -21,
+            "lines": [("Menu Découverte — dîner du {date}", 4, 4500)],
+            "mail": "sent",
+        },
+        "payments": [("solde", 20000, "especes", -51, "A laissé 200 € en liquide")],
+    },
     # Repas passé, pas encore facturé : ce que le back-office doit rappeler.
     {
         "key": "a_facturer", "slot": (-3, "soir"), "ref": "R-YT7CD4",
@@ -134,6 +221,22 @@ BOOKINGS = [
         "phone": "06 12 90 44 78", "address": "8 chemin de la Loire, Couëron",
         "guests": 4, "formula": "decouverte", "message": "",
         "mail": ("sent", "sent", ""),
+        "payments": [],
+    },
+    # Réservée sans choisir de formule, et confirmation jamais partie parce
+    # que l'envoi était coupé : le brouillon part alors d'une ligne à zéro,
+    # à chiffrer à la main.
+    {
+        "key": "sans_formule", "slot": (-31, "midi"), "ref": "R-D2VYN8",
+        "name": "Farid Benali", "email": "farid.benali@example.com",
+        "phone": "", "address": "Salle des fêtes, Bouguenais",
+        "guests": 9, "formula": None,
+        "message": "On verra le menu ensemble, plutôt méditerranéen.",
+        "mail": ("disabled", "disabled", "SMTP_HOST non configuré"),
+        "invoice": {
+            "status": "draft", "due": 30,
+            "lines": [("Prestation de chef à domicile — déjeuner du {date}, 9 convives", 1, 0)],
+        },
         "payments": [],
     },
     # À venir, brouillon de facture en attente : éditable, sans numéro.
@@ -211,14 +314,16 @@ def _insert(conn) -> None:
     now = billing.now_iso()
 
     formula_ids = {}
-    for position, (slug, name, description, pricing, price, min_guests) in enumerate(FORMULAS):
+    formula_names = {}
+    for position, (slug, name, description, pricing, price, min_guests, active) in enumerate(FORMULAS):
         cur = conn.execute(
             """INSERT INTO formulas (slug, name, description, pricing, price_cents,
                                      min_guests, active, position, demo, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1, ?, 1, ?)""",
-            (slug, name, description, pricing, price, min_guests, position, now),
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (slug, name, description, pricing, price, min_guests, active, position, now),
         )
         formula_ids[slug] = cur.lastrowid
+        formula_names[slug] = name
 
     slot_ids = {}
     for offset, service, note in SLOTS:
@@ -232,6 +337,10 @@ def _insert(conn) -> None:
         slot_key = tuple(spec["slot"])
         slot_date = _d(slot_key[0])
         mail_client, mail_chef, mail_error = spec["mail"]
+        # Une réservation peut n'avoir aucune formule : le client verra plus
+        # tard avec le chef. Le libellé reste vide et la facture part d'une
+        # ligne à chiffrer.
+        slug = spec["formula"]
         cur = conn.execute(
             """INSERT INTO bookings (ref, slot_id, name, email, phone, address, guests,
                                      formula, formula_id, message, status, created_at,
@@ -239,8 +348,8 @@ def _insert(conn) -> None:
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (spec["ref"], slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
              spec["address"], spec["guests"],
-             next(f[1] for f in FORMULAS if f[0] == spec["formula"]),
-             formula_ids[spec["formula"]], spec["message"],
+             formula_names.get(slug, "") if slug else "",
+             formula_ids.get(slug) if slug else None, spec["message"],
              spec.get("status", "confirmed"), _d(slot_key[0] - 30),
              _d(spec["cancelled"]) if spec.get("cancelled") is not None else None,
              mail_client, mail_chef, mail_error),
@@ -269,6 +378,9 @@ def _insert(conn) -> None:
 
 def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str, now: str) -> None:
     lines = [(label.format(date=slot_date), qty, unit) for label, qty, unit in spec["lines"]]
+    # Le taux est figé sur la facture, jamais relu dans la config : une facture
+    # émise sous un régime ne doit pas changer quand le régime change.
+    vat = int(spec.get("vat_rate_bp", config.VAT_RATE_BP))
     total = sum(qty * unit for _, qty, unit in lines)
     issued_on = _d(spec["issued"]) if spec.get("issued") is not None else None
     # Numéro pris sur l'année de la date de facture, comme en vrai : un
@@ -280,16 +392,18 @@ def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str
         """INSERT INTO invoices (booking_id, number, status, issued_on, due_on,
                                  vat_rate_bp, vat_note, seller_json, client_json,
                                  notes, total_cents, created_at, issued_at,
-                                 cancelled_at, cancel_reason, mail_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)""",
+                                 cancelled_at, cancel_reason, mail_status, mail_error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (booking["id"], number, status, issued_on,
          _d(spec["due"]) if spec.get("due") is not None else None,
-         config.VAT_RATE_BP, config.VAT_NOTE,
+         vat, config.VAT_NOTE,
          json.dumps(billing.seller_identity(), ensure_ascii=False),
          json.dumps(billing.client_identity(booking), ensure_ascii=False),
+         spec.get("notes", ""),
          0 if status == "draft" else total, now,
          issued_on, _d(0) if status == "cancelled" else None,
-         spec.get("reason", ""), spec.get("mail", "pending")),
+         spec.get("reason", ""), spec.get("mail", "pending"),
+         spec.get("mail_error", "")),
     )
     invoice_id = cur.lastrowid
     for position, (label, qty, unit) in enumerate(lines):

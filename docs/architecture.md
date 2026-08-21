@@ -161,9 +161,14 @@ Trois garde-fous, vérifiés :
 `SEED_DEMO` l'active (par défaut en `DEV`, éteint ailleurs). Éteindre la
 variable retire les exemples au démarrage suivant.
 
+L'identité vendeur imprimée sur les factures de démonstration est fictive et
+vit dans `seed.DEMO_LEGAL` : sans elle, chaque facture d'exemple s'imprime avec
+les `PLACEHOLDER` du fichier éditorial et ne montre rien.
+
 **Toute évolution fonctionnelle doit se refléter dans le jeu, dans le même
-commit, avec `SEED_VERSION` incrémenté.** Un jeu qui ne montre que le cas
-nominal laisse la moitié de l'interface non éprouvée.
+commit, avec `SEED_VERSION` incrémenté.** `tools/check-seed.py` rend la règle
+opposable : il sème une base jetable et vérifie que chaque état affichable est
+représenté (42 aujourd'hui), nomme ceux qui manquent et sort en 1.
 
 ## Frontend
 
