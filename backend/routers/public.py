@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from .. import billing, config, content, db, diets, mailer
+from .. import billing, config, content, db, diets, mailer, settings
 
 log = logging.getLogger("chef.public")
 
@@ -62,6 +62,10 @@ def get_content() -> dict:
     celui qui servira de base à la facture."""
     site = dict(content.load())
     site["diets"] = diets.catalogue()
+    # La zone annoncée au client est DÉRIVÉE de la liste qui fait loi, jamais
+    # recopiée dans le fichier éditorial : une zone affichée qui diverge de la
+    # zone appliquée fait refuser quelqu'un à qui on venait de dire oui.
+    site["booking"] = {**site["booking"], "area_note": settings.area_note()}
     site["occasions"] = [{"id": i, "label": label} for i, label in OCCASIONS]
     with db.cursor() as conn:
         site["formulas"] = billing.public_formulas(conn)
@@ -244,6 +248,14 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
         raise HTTPException(
             422, f"Le nombre de convives doit être compris entre {min_guests} et {max_guests}."
         )
+
+    accepted, why = settings.in_area(payload.city)
+    if not accepted:
+        # Un refus qui ne propose rien fait perdre un client qui, souvent,
+        # aurait payé le déplacement. Le devis est exactement le chemin pour
+        # cette conversation-là.
+        raise HTTPException(
+            422, f"{why} Faites-moi une demande sur mesure : je regarde si c'est jouable.")
 
     try:
         declared = diets.normalise(payload.diets, payload.guests)

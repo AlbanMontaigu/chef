@@ -28,7 +28,8 @@ _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
 from backend import billing, db, diets, reminders, seed, settings
-from backend.routers import client  # noqa: E402  (l'env doit précéder l'import)
+from backend.routers import client
+from backend.routers.billing import SettingsIn  # noqa: E402  (l'env doit précéder l'import)
 
 
 def _load() -> dict:
@@ -63,6 +64,29 @@ def _load() -> dict:
             inv["id"]: billing.lines_of(conn, inv["id"]) for inv in data["invoices"]
         }
     return data
+
+
+def _settings_survive_partial_save() -> bool:
+    """Les réglages se relisent quand UNE valeur est posée et l'autre non.
+
+    Régression réelle : le repli de démonstration importait `seed` dans la
+    branche de l'adresse, et la branche de la zone s'en servait. Dès qu'une
+    adresse était enregistrée sans zone, `all_settings()` levait un
+    UnboundLocalError — donc une 500 sur /api/content, c'est-à-dire le site
+    public entier. Le cas est ici parce qu'un jeu de démonstration part
+    toujours de deux valeurs vides et ne l'aurait jamais rencontré.
+    """
+    before = settings.all_settings()
+    try:
+        for key in settings.DEFAULTS:
+            others = {k: "" for k in settings.DEFAULTS if k != key}
+            settings.save({key: "44" if key == "area_postcodes" else "x", **others})
+            settings.all_settings()
+        return True
+    except Exception:  # noqa: BLE001 -- le contrôle est « ça ne lève pas »
+        return False
+    finally:
+        settings.save(before)
 
 
 def build_checks(d: dict) -> list[tuple[str, bool]]:
@@ -244,6 +268,20 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("identité vendeur de démonstration renseignée",
          all(billing.seller_identity().get(k) for k in
              ("name", "address", "siret", "iban", "payment_terms"))),
+        ("le formulaire de réglages couvre exactement les réglages connus",
+         set(SettingsIn.model_fields) == set(settings.DEFAULTS)),
+        ("réglages relisibles quand une seule valeur est enregistrée",
+         _settings_survive_partial_save()),
+        ("zone de déplacement renseignée (le contrôle est visible dans la démo)",
+         bool(settings.area_prefixes())),
+        ("zone annoncée au client dérivée de la zone appliquée",
+         all(p in settings.area_note() for p in settings.area_prefixes())),
+        ("toutes les réservations d'exemple entrent dans la zone annoncée",
+         all(settings.in_area(b["city"])[0] for b in bookings)),
+        ("un code postal hors zone est bien refusé",
+         not settings.in_area("75011 Paris")[0]),
+        ("une réservation sans code postal reste acceptée",
+         settings.in_area("")[0]),
         ("adresse de départ du chef renseignée (lien d'itinéraire visible)",
          bool(settings.chef_address())),
         ("réservation avec adresse de repas, pour l'itinéraire",

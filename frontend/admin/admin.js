@@ -439,10 +439,17 @@ app.addEventListener('submit', async (event) => {
   if (event.target.id === 'settings-form') {
     event.preventDefault();
     const address = event.target.elements.chef_address.value;
+    const area = event.target.elements.area_postcodes.value;
     act(async () => {
-      await api.saveSettings({ chef_address: address });
+      await api.saveSettings({ chef_address: address, area_postcodes: area });
       billing.settings.chef_address = address.trim();
-      return address.trim() ? 'Adresse de départ enregistrée.' : 'Adresse de départ effacée.';
+      billing.settings.area_postcodes = area.trim();
+      // Le message nomme l'effet de la zone, pas le fait d'avoir enregistré :
+      // « vide » veut dire « plus aucune restriction », et le chef doit le
+      // lire au moment où il le fait, pas le découvrir sur une réservation.
+      return area.trim()
+        ? `Réglages enregistrés. Zone appliquée : ${area.trim()}.`
+        : 'Réglages enregistrés. Aucune restriction de zone : toutes les communes peuvent réserver.';
     });
     return;
   }

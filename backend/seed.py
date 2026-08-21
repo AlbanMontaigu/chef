@@ -39,6 +39,12 @@ def _d(days: int) -> str:
 # d'itinéraire ne s'affiche jamais et la fonction reste invisible dans le jeu.
 DEMO_CHEF_ADDRESS = "12 rue des Olivettes, 44000 Nantes"
 
+# Zone de déplacement de démonstration. Sans elle, le contrôle de zone ne se
+# voit nulle part et passerait pour absent. Volontairement large : toutes les
+# réservations d'exemple doivent y entrer, sinon le jeu montrerait un
+# back-office rempli de réservations que le site refuserait aujourd'hui.
+DEMO_AREA_POSTCODES = "44, 49, 85"
+
 
 # --- Identité de démonstration ----------------------------------------
 # Entièrement FICTIVE, et c'est le point : sans elle, toute facture de

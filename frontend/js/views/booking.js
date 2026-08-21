@@ -132,6 +132,8 @@ function form() {
       ${options ? `<label>Formule envisagée<select name="formula"><option value="">À définir ensemble</option>${options}</select></label>` : ''}
       ${dietPicker()}
       <label>Autre chose à me dire<textarea name="message" rows="3" maxlength="2000" placeholder="Une cuisine sans four, un anniversaire à fêter, un plat qu'on adore…">${escapeHtml(f.message)}</textarea></label>
+      ${cfg.area_note ? `<p class="notice">${escapeHtml(cfg.area_note)} Au-delà,
+        <a href="#devis">demandez-moi un devis</a> : c'est souvent jouable.</p>` : ''}
       ${cfg.notice ? `<p class="notice">${escapeHtml(cfg.notice)}</p>` : ''}
       ${state.error ? `<p class="error" role="alert">${escapeHtml(state.error)}</p>` : ''}
       <button type="submit" class="cta" ${state.submitting ? 'disabled' : ''}>

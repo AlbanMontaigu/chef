@@ -493,6 +493,25 @@ def compute_travel(booking_id: int) -> dict:
 
 class SettingsIn(BaseModel):
     chef_address: str = Field(default="", max_length=300)
+    area_postcodes: str = Field(default="", max_length=200)
+
+    @field_validator("area_postcodes")
+    @classmethod
+    def _postcodes(cls, value: str) -> str:
+        """Normalise « 44 ,85, 49 » en « 44, 49, 85 ».
+
+        Une entrée non numérique est refusée plutôt que silencieusement
+        ignorée : un chef qui tape « Loire-Atlantique » croirait sa zone posée
+        alors que `area_prefixes()` la jetterait, et le site laisserait passer
+        la France entière sans que rien ne le dise.
+        """
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+        bad = [p for p in parts if not p.isdigit()]
+        if bad:
+            raise ValueError(
+                "la zone attend des débuts de code postal, séparés par des virgules "
+                f"(ex. « 44, 85 ») — reçu : {', '.join(bad)}")
+        return ", ".join(sorted(set(parts)))
 
 
 @router.get("/settings")
@@ -502,5 +521,16 @@ def read_settings() -> dict:
 
 @router.patch("/settings")
 def write_settings(payload: SettingsIn) -> dict:
-    settings.save({"chef_address": payload.chef_address.strip()})
-    return {"updated": True}
+    """Enregistre TOUS les réglages déclarés par le modèle.
+
+    Écrit ainsi, et pas champ par champ : la version précédente ne posait que
+    `chef_address` et jetait la zone en silence, tout en répondant
+    « updated: true ». Ajouter un réglage au modèle sans penser à l'écrire ici
+    donnait un champ qui s'affiche, s'enregistre en apparence, et ne fait
+    rien. `settings.save()` refuse une clé inconnue, donc le modèle et
+    `DEFAULTS` ne peuvent pas diverger sans que ça se voie tout de suite.
+    """
+    values = {k: v.strip() if isinstance(v, str) else v
+              for k, v in payload.model_dump().items()}
+    settings.save(values)
+    return {"updated": True, "settings": settings.all_settings()}

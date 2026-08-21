@@ -378,6 +378,15 @@ export function settingsPanel() {
           calculer le trajet jusqu'à chaque client, depuis la fiche de la réservation. Elle reste
           dans votre back-office : elle n'apparaît ni sur le site, ni sur vos factures, et n'est
           jamais communiquée à un client.</p>
+        <label>Votre zone de déplacement
+          <input name="area_postcodes" value="${escapeHtml(s.area_postcodes ?? '')}" maxlength="200"
+                 placeholder="44, 49, 85" inputmode="numeric">
+        </label>
+        <p class="hint" style="margin:0 0 1rem">Les débuts de code postal que vous acceptez,
+          séparés par des virgules. Une réservation hors de cette zone est refusée sur le site,
+          avec une invitation à demander un devis — vous gardez la main sur les exceptions.
+          <strong>Laissez vide pour ne rien restreindre.</strong> Cette liste est aussi ce que
+          le site annonce à vos clients : il n'y a pas deux endroits à tenir à jour.</p>
         <div class="actions"><button class="btn primary" type="submit">Enregistrer</button></div>
       </form>
     </div>`;
