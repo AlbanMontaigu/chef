@@ -31,6 +31,8 @@ export const api = {
   issueInvoice: (id) => request(`/api/admin/invoices/${id}/issue`, { method: 'POST' }),
   cancelInvoice: (id, reason) => request(`/api/admin/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   sendInvoice: (id) => request(`/api/admin/invoices/${id}/send`, { method: 'POST' }),
+  reminders: () => request('/api/admin/reminders'),
+  runReminders: () => request('/api/admin/reminders/run', { method: 'POST' }),
   settings: () => request('/api/admin/settings'),
   saveSettings: (body) => request('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
 };
@@ -73,6 +75,7 @@ export const billing = {
   editingFormula: null, // id, ou 'new', ou null
   settings: { chef_address: '' },
   editingAddress: false,
+  reminders: null,
 };
 
 /* Lien d'itinéraire vers l'application de cartes, pas un calcul embarqué : la
@@ -440,4 +443,59 @@ export function draftPayload() {
     due_on: invoice.due_on ?? '',
     vat_rate_bp: invoice.vat_rate_bp ?? 0,
   };
+}
+
+
+// --- Rappels et relances -------------------------------------------------
+
+/* Le chef ne peut rien modifier ici : la file est le journal de ce que le
+   système a décidé d'envoyer. La rendre éditable la rendrait inutile comme
+   preuve — « la relance est-elle partie ? » n'aurait plus de réponse fiable. */
+export function remindersPanel() {
+  const r = billing.reminders;
+  if (!r) return `<div class="panel"><h2>Rappels et relances</h2>
+    <p class="hint" style="margin:0">Chargement…</p></div>`;
+
+  const off = !r.enabled
+    ? `<p class="error">Les rappels sont coupés côté serveur (REMINDERS_ENABLED=0) :
+       rien ne partira, ni rappel avant un repas, ni relance d'impayé.</p>`
+    : !r.mail_enabled
+      ? `<p class="error">L'envoi d'e-mails est désactivé (SMTP_HOST) : les rappels
+         s'accumulent en attente et repartiront dès que l'envoi sera rétabli.</p>`
+      : `<p class="hint">Le serveur passe en revue les rappels toutes les
+         ${escapeHtml(r.tick_minutes)} minutes. Rien à faire : ceci est ce qu'il a décidé.</p>`;
+
+  const rows = r.reminders.map((x) => {
+    const klass = { sent: 'ok', failed: 'bad', pending: 'neutral', skipped: 'warn' }[x.status] ?? 'neutral';
+    // Le motif d'abandon et l'erreur sont rendus tels quels : « abandonné »
+    // sans raison ne se distingue pas d'un bug.
+    const why = x.error ? ` <span class="hint" style="margin:0">${escapeHtml(x.error)}</span>` : '';
+    const tries = x.attempts > 1 ? ` · ${escapeHtml(x.attempts)} tentatives` : '';
+    const who = x.name ? `${escapeHtml(x.name)}${x.ref ? ` (${escapeHtml(x.ref)})` : ''}` : '—';
+    const when = x.status === 'sent' && x.sent_at
+      ? `envoyé le ${escapeHtml(longDate(x.sent_at.slice(0, 10)))}`
+      : `prévu le ${escapeHtml(longDate(x.due_on))}`;
+    return `<div class="invoice-row">
+      <div>
+        <strong>${escapeHtml(x.kind_label)}</strong>
+        <p class="meta">${who}${x.date ? ` · repas du ${escapeHtml(longDate(x.date))}` : ''}</p>
+        <p class="meta">${when}${tries} · ${escapeHtml(x.recipient || 'destinataire inconnu')}</p>
+      </div>
+      <div class="actions"><span class="badge ${klass}">${escapeHtml(x.status_label)}</span>${why}</div>
+    </div>`;
+  }).join('');
+
+  const alert = r.failed
+    ? `<p class="error">${escapeHtml(r.failed)} rappel(s) en échec définitif : ils ne repartiront
+       pas tout seuls. Vérifiez l'adresse du client, puis écrivez-lui directement.</p>`
+    : '';
+
+  return `<div class="panel">
+    <h2>Rappels et relances</h2>
+    ${off}${alert}
+    <div class="actions" style="margin-bottom:1.25rem">
+      <button class="btn primary" data-reminders-run="1">Passer en revue maintenant</button>
+    </div>
+    ${rows || '<p class="hint" style="margin:0">Rien de prévu pour l\'instant.</p>'}
+  </div>`;
 }

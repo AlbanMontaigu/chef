@@ -3,7 +3,8 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
          BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
-         settingsPanel, travelBadge, captureDraft, draftPayload } from './billing.js';
+         settingsPanel, remindersPanel, travelBadge, captureDraft,
+         draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -13,6 +14,7 @@ const TABS = [
   ['agenda', 'Agenda'],
   ['facturation', 'Facturation'],
   ['formules', 'Formules'],
+  ['relances', 'Relances'],
   ['reglages', 'Réglages'],
 ];
 
@@ -236,6 +238,7 @@ function bookingsPanel() {
 
 function tabBody() {
   if (view.tab === 'reglages') return settingsPanel();
+  if (view.tab === 'relances') return remindersPanel();
   if (view.tab === 'formules') return formulasPanel();
   if (view.tab === 'facturation') return invoicesPanel();
   return `<div class="admin-split">
@@ -298,6 +301,7 @@ async function refresh() {
       billing.formulas = data.formulas;
       billing.pricingKinds = data.pricing_kinds;
     }
+    if (view.tab === 'relances') billing.reminders = await api.reminders();
 
     if (billing.folder) {
       const id = billing.folder.booking.id;
@@ -567,6 +571,16 @@ app.addEventListener('click', (event) => {
     act(async () => {
       await api.deletePayment(Number(deletePayment.dataset.paymentDelete));
       return 'Encaissement supprimé.';
+    });
+    return;
+  }
+
+  if (event.target.closest('[data-reminders-run]')) {
+    act(async () => {
+      const r = await api.runReminders();
+      // Le compte est rendu tel quel, y compris à zéro : « rien à envoyer »
+      // et « l'envoi ne marche pas » ne doivent pas se ressembler.
+      return `${r.planned} planifié(s), ${r.sent} envoyé(s), ${r.skipped} abandonné(s), ${r.failed} en échec.`;
     });
     return;
   }

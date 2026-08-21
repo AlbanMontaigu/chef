@@ -76,6 +76,27 @@ INVOICE_IBAN = os.environ.get("INVOICE_IBAN", "")
 INVOICE_BIC = os.environ.get("INVOICE_BIC", "")
 PAYMENT_TERMS_DAYS = int(os.environ.get("PAYMENT_TERMS_DAYS", "30"))
 
+# --- Rappels et relances -----------------------------------------------
+# Le planificateur tourne DANS le processus : un seul conteneur, une seule
+# base, pas de cron externe à installer ni à surveiller. Le couper se fait
+# ici et se voit dans /health -- jamais un arrêt silencieux.
+REMINDERS_ENABLED = os.environ.get("REMINDERS_ENABLED", "1").lower() not in ("0", "false", "no")
+REMINDER_TICK_MINUTES = max(1, int(os.environ.get("REMINDER_TICK_MINUTES", "30")))
+# Combien de jours avant le repas part le rappel au client. Assez tôt pour
+# qu'il puisse encore prévenir d'un convive en plus, assez tard pour ne pas
+# se faire oublier.
+REMINDER_MEAL_DAYS = int(os.environ.get("REMINDER_MEAL_DAYS", "3"))
+# Décalages, en jours après l'échéance, des relances d'impayé. Deux valeurs =
+# deux relances. Une liste vide coupe les relances sans toucher au reste.
+REMINDER_INVOICE_DAYS = tuple(
+    int(x) for x in os.environ.get("REMINDER_INVOICE_DAYS", "1,15").split(",") if x.strip()
+)
+# Délai après un repas servi avant de signaler au chef qu'il n'est pas facturé.
+REMINDER_INVOICE_LAG = int(os.environ.get("REMINDER_INVOICE_LAG", "2"))
+# Au-delà, la ligne s'arrête sur 'failed' et attend un geste humain plutôt que
+# de marteler une adresse qui refuse.
+REMINDER_MAX_ATTEMPTS = max(1, int(os.environ.get("REMINDER_MAX_ATTEMPTS", "3")))
+
 # --- Trajet ------------------------------------------------------------
 # Au-delà de cette distance, l'estimation est refusée plutôt qu'affichée : un
 # chef à domicile ne parcourt pas 700 km, et une adresse incomplète se fait

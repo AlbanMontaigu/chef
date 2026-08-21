@@ -189,3 +189,36 @@ CREATE TABLE IF NOT EXISTS geocache (
     label      TEXT NOT NULL DEFAULT '',   -- adresse telle que reconnue, pour vérification
     created_at TEXT NOT NULL
 );
+
+-- --------------------------------------------------------------------
+-- Rappels et relances. Une ligne = un envoi prévu, à une date donnée, pour
+-- une cible donnée. Elle est inscrite d'abord, envoyée ensuite : c'est cette
+-- séparation qui rend le « une seule fois » vérifiable -- il est porté par
+-- l'index unique ci-dessous, et par rien d'autre. Cf. backend/reminders.py.
+CREATE TABLE IF NOT EXISTS reminders (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,     -- 'repas_proche' | 'facture_echue' | 'a_facturer'
+    -- 'booking:12' / 'invoice:7'. Une chaîne plutôt que deux colonnes
+    -- nullables : en SQLite deux NULL sont distincts, un index unique portant
+    -- sur une colonne vide ne dédoublonnerait donc rien.
+    target     TEXT NOT NULL,
+    due_on     TEXT NOT NULL,     -- date à laquelle l'envoi devient dû
+    status     TEXT NOT NULL DEFAULT 'pending',  -- pending|sent|failed|skipped
+    recipient  TEXT NOT NULL DEFAULT '',
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    -- Motif d'abandon ('skipped') ou dernière erreur d'envoi. Jamais vidé :
+    -- un rappel qui n'est pas parti doit dire pourquoi, même des mois après.
+    error      TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    sent_at    TEXT,
+    -- 1 = posé par le jeu de démonstration. Même règle que partout ailleurs :
+    -- la purge ne vise que ce marqueur, et ne peut donc pas effacer la trace
+    -- d'une relance réellement envoyée à un vrai client.
+    demo       INTEGER NOT NULL DEFAULT 0
+);
+
+-- Le « une seule fois » vit ici. Deux relances d'une même facture existent en
+-- portant deux échéances différentes ; la même échéance ne s'inscrit qu'une
+-- fois, quel que soit le nombre de replanifications.
+CREATE UNIQUE INDEX IF NOT EXISTS reminders_once ON reminders (kind, target, due_on);
+CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, due_on);

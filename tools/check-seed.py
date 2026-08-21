@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, diets, seed, settings
+from backend import billing, db, diets, reminders, seed, settings
 from backend.routers import client  # noqa: E402  (l'env doit précéder l'import)
 
 
@@ -46,6 +46,12 @@ def _load() -> dict:
         data["states"] = {}
         for booking in data["bookings"]:
             data["states"][booking["ref"]] = billing.booking_billing(conn, booking)
+        # Le planificateur est joué pour de vrai sur le jeu de démonstration :
+        # c'est le seul moyen de vérifier qu'il sait produire chacune de ses
+        # natures de rappel, plutôt que de le supposer.
+        reminders.plan(conn, billing.today())
+        data["reminders"] = [dict(r) for r in conn.execute("SELECT * FROM reminders")]
+
         # Le verdict d'annulation est demandé à la fonction qui l'applique
         # réellement, pas à une copie de sa règle : un contrôle qui réimplémente
         # ce qu'il vérifie finit par valider sa propre erreur.
@@ -153,6 +159,28 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("envoi de facture réussi", any(i["mail_status"] == "sent" for i in issued)),
         ("envoi de facture en échec",
          any(i["mail_status"] == "failed" and i["mail_error"] for i in issued)),
+
+        # --- Rappels et relances
+        *[(f"rappel planifié : {label.lower()}",
+           any(r["kind"] == kind for r in d["reminders"]))
+          for kind, label in reminders.KIND_LABEL.items()],
+        ("rappel déjà envoyé", any(r["status"] == "sent" and r["sent_at"]
+                                   for r in d["reminders"])),
+        ("rappel en échec définitif, avec son erreur",
+         any(r["status"] == "failed" and r["error"] and r["attempts"] > 1
+             for r in d["reminders"])),
+        ("rappel abandonné, avec son motif",
+         any(r["status"] == "skipped" and r["error"] for r in d["reminders"])),
+        ("rappel en attente d'envoi", any(r["status"] == "pending"
+                                          for r in d["reminders"])),
+        ("aucun rappel en double (nature, cible et échéance)",
+         len({(r["kind"], r["target"], r["due_on"]) for r in d["reminders"]})
+         == len(d["reminders"])),
+        ("aucun rappel de repas planifié après le repas",
+         all(r["due_on"] <= next((b["date"] for b in bookings
+                                  if f"booking:{b['id']}" == r["target"]), "9999")
+             for r in d["reminders"] if r["kind"] == "repas_proche"
+             and r["status"] == "pending")),
 
         # --- Page de suivi du client
         ("réservation porteuse d'un jeton de suivi",

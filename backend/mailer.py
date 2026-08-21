@@ -334,3 +334,81 @@ def _invoice_body(invoice: dict, site_name: str) -> str:
     from . import invoice_html
 
     return invoice_html.text_summary(invoice, site_name)
+
+
+# --- Rappels et relances -----------------------------------------------
+# Trois envois programmés, décidés par backend/reminders.py. Ils ne touchent
+# PAS aux colonnes `mail_*` de la réservation : celles-ci décrivent la
+# confirmation initiale, et les écraser effacerait la trace de ce qui s'est
+# passé le jour de la réservation. Leur résultat vit sur la ligne de rappel.
+
+def send_meal_reminder(booking: dict, site_name: str) -> tuple[str, str]:
+    """Rappel au client, quelques jours avant le repas.
+
+    Il redit les régimes déclarés : c'est le dernier moment utile pour qu'un
+    client corrige « finalement on sera sept, et ma belle-sœur est coeliaque ».
+    """
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    url = follow_url(booking)
+    body = (
+        f"Bonjour {booking['name']},\n\n"
+        f"Petit rappel : je cuisine chez vous {_pretty_date(booking['date'])} "
+        f"({service}).\n\n"
+        f"  Convives   : {booking['guests']}\n"
+        f"  Formule    : {booking['formula'] or 'à définir ensemble'}\n"
+        f"{_diet_block(booking)}"
+        f"  Lieu       : {_address(booking)}\n"
+        f"  Référence  : {booking['ref']}\n\n"
+        f"Si quelque chose a changé — le nombre de convives, une allergie, "
+        f"l'adresse — répondez à cet e-mail : il est encore temps, après il "
+        f"sera trop tard pour les courses.\n\n"
+        + (f"Votre page de suivi : {url}\n\n" if url else "")
+        + f"À très vite,\n{site_name}\n"
+    )
+    return _send(booking["email"],
+                 f"Rendez-vous {_short_date(booking['date'])} ({service})",
+                 body, reply_to=config.MAIL_TO or "")
+
+
+def send_invoice_reminder(invoice: dict, booking: dict, balance: int,
+                          site_name: str) -> tuple[str, str]:
+    """Relance d'impayé. Le ton reste celui d'un artisan, pas d'un huissier.
+
+    Le montant relancé est le **solde restant**, pas le total : relancer sur
+    le total un client qui a versé un acompte lui donne raison de discuter au
+    lieu de payer.
+    """
+    due = f" (échéance du {_pretty_date(invoice['due_on'])})" if invoice.get("due_on") else ""
+    url = follow_url(booking)
+    body = (
+        f"Bonjour {booking['name']},\n\n"
+        f"Je me permets un rappel au sujet de la facture {invoice['number']}"
+        f"{due}, pour le repas du {_pretty_date(booking['date'])}.\n\n"
+        f"  Montant de la facture : {money.format_amount(int(invoice['total_cents']))}\n"
+        f"  Reste à régler        : {money.format_amount(balance)}\n\n"
+        f"Si le règlement est déjà parti, ce message n'a plus lieu d'être et "
+        f"je vous prie de m'en excuser — les virements se croisent.\n\n"
+        + (f"La facture et le détail : {url}\n\n" if url else "")
+        + f"Merci beaucoup,\n{site_name}\n"
+    )
+    return _send(booking["email"],
+                 f"Facture {invoice['number']} — {money.format_amount(balance)} à régler",
+                 body, reply_to=config.MAIL_TO or "")
+
+
+def send_to_invoice_reminder(booking: dict) -> tuple[str, str]:
+    """Signal au chef : un repas servi et jamais facturé. De l'argent oublié."""
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    body = (
+        f"Le repas du {_pretty_date(booking['date'])} ({service}) a été servi et "
+        f"n'est toujours pas facturé.\n\n"
+        f"  Client     : {booking['name']}\n"
+        f"  Convives   : {booking['guests']}\n"
+        f"  Formule    : {booking['formula'] or '—'}\n"
+        f"  Référence  : {booking['ref']}\n\n"
+        f"Le brouillon se crée en un clic depuis le dossier.\n\n"
+        f"Back-office : {config.PUBLIC_URL}/admin\n"
+    )
+    return _send(config.MAIL_TO,
+                 f"[À facturer] {_short_date(booking['date'])} {service} — {booking['name']}",
+                 body, reply_to=booking["email"])

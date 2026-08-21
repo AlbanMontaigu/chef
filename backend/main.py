@@ -5,6 +5,7 @@ served as a separate page rather than a route of the public SPA so that a
 visitor never downloads the back-office at all.
 """
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -16,7 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from . import config, content, db, seed
+from . import config, content, db, reminders, seed
 from .routers import admin, billing as billing_api, client, public
 
 logging.basicConfig(
@@ -56,6 +57,30 @@ def _page(filename: str) -> str:
         html = fh.read()
     return _ASSET_RE.sub(rf'\1="/v/{BUILD_ID}/\2/', html)
 
+async def _reminder_loop() -> None:
+    """Planifie et envoie les rappels, indéfiniment.
+
+    Dans le processus, et pas dans un cron : un seul conteneur, une seule base,
+    rien de plus à installer ni à surveiller. Le tour complet est synchrone
+    (SQLite et SMTP le sont) : il part donc dans un thread, sinon un serveur
+    SMTP lent gèlerait toutes les requêtes HTTP pendant son délai d'attente.
+
+    Aucune exception ne sort d'ici : un tick qui échoue est journalisé et le
+    suivant repart. Une boucle de rappels qui meurt en silence redonnerait
+    exactement la situation qu'elle est censée corriger.
+    """
+    while True:
+        try:
+            result = await asyncio.to_thread(reminders.run_once)
+            if any(result.values()):
+                log.info("tick relances : %s", result)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("tick de relance en échec -- le suivant reprendra")
+        await asyncio.sleep(config.REMINDER_TICK_MINUTES * 60)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init()
@@ -70,7 +95,24 @@ async def lifespan(_: FastAPI):
         log.warning("ADMIN_PASSWORD unset - the back-office cannot be used")
     if not config.mail_enabled():
         log.warning("SMTP_HOST unset - booking confirmations will NOT be sent")
-    yield
+
+    task = None
+    if config.REMINDERS_ENABLED:
+        task = asyncio.create_task(_reminder_loop())
+        log.info("rappels actifs - tick toutes les %d min", config.REMINDER_TICK_MINUTES)
+    else:
+        # Coupé volontairement : c'est un réglage, pas une panne, mais il ne
+        # doit pas être découvert le jour où une relance manque.
+        log.warning("REMINDERS_ENABLED=0 - aucun rappel ni relance ne partira")
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 class FrontendFiles(StaticFiles):
@@ -143,6 +185,9 @@ def health() -> dict:
         "bookings": pending,
         "mail_enabled": config.mail_enabled(),
         "admin_configured": bool(config.ADMIN_PASSWORD),
+        # Une file de rappels qui gonfle, ou des échecs qui s'accumulent, se
+        # voient depuis l'extérieur -- c'est ce que surveille le reverse-monitor.
+        "reminders": reminders.health(),
     }
 
 

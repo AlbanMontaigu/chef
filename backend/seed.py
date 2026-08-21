@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 10
+SEED_VERSION = 11
 _MARKER = "seed_version"
 
 
@@ -464,6 +464,48 @@ BOOKINGS = [
 ]
 
 
+# Rappels déjà joués. Le planificateur produit tout seul les lignes « en
+# attente » au premier tour ; ce qu'il ne peut pas fabriquer à la demande, ce
+# sont les issues passées — un envoi réussi, un échec définitif, un abandon.
+# Sans elles, trois quarts du panneau Relances ne se voient jamais.
+REMINDERS = [
+    # (clé de réservation, nature, cible, décalage de l'échéance, statut,
+    #  tentatives, erreur ou motif)
+    # Parti comme prévu, trois jours avant un repas déjà servi.
+    ("soldee", "repas_proche", "booking", -27, "sent", 1, ""),
+    # Relance d'impayé qui n'atteint pas sa boîte : l'adresse refuse. Trois
+    # tentatives, puis la ligne s'arrête et attend un geste humain.
+    ("impayee", "facture_echue", "invoice", -13, "failed", 3,
+     "SMTPRecipientsRefused: 550 mailbox unavailable"),
+    # Abandonné à l'envoi : le chef avait facturé entre-temps. Le rappel avait
+    # raison d'être inscrit, il n'avait plus raison de partir.
+    ("acompte", "a_facturer", "booking", -15, "skipped", 0, "facture créée depuis"),
+    # Abandonné parce que le client a annulé après l'inscription du rappel.
+    ("annulee", "repas_proche", "booking", 20, "skipped", 0, "réservation annulée depuis"),
+]
+
+
+def _insert_reminders(conn, booking_ids: dict, invoice_ids: dict, now: str) -> None:
+    for key, kind, what, offset, status, attempts, error in REMINDERS:
+        row_id = (booking_ids if what == "booking" else invoice_ids).get(key)
+        if row_id is None:
+            # Un exemple qui désigne une réservation absente est une erreur de
+            # jeu, pas une donnée : bruyant plutôt que silencieusement ignoré.
+            log.error("rappel de démonstration %r sans cible %r", kind, key)
+            continue
+        recipient = conn.execute(
+            "SELECT email FROM bookings WHERE id = ?", (booking_ids[key],)
+        ).fetchone()["email"]
+        conn.execute(
+            """INSERT INTO reminders (kind, target, due_on, status, recipient,
+                                      attempts, error, created_at, sent_at, demo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (kind, f"{what}:{row_id}", _d(offset), status,
+             config.MAIL_TO or "chef@example.com" if kind == "a_facturer" else recipient,
+             attempts, error, now, _d(offset) if status == "sent" else None),
+        )
+
+
 # --- Application -------------------------------------------------------
 
 def _purge(conn) -> int:
@@ -488,6 +530,10 @@ def _purge(conn) -> int:
     conn.execute(
         "DELETE FROM formulas WHERE demo = 1 AND id NOT IN "
         "(SELECT formula_id FROM bookings WHERE formula_id IS NOT NULL)")
+    # Les rappels ne descendent d'aucune cascade : ils désignent leur cible par
+    # une chaîne ('booking:12'), pas par une clé étrangère. Ils se purgent donc
+    # sur leur propre marqueur, comme tout le reste.
+    conn.execute("DELETE FROM reminders WHERE demo = 1")
     return removed
 
 
@@ -524,6 +570,10 @@ def _insert(conn) -> None:
         formula_ids[slug] = cur.lastrowid
         formula_names[slug] = name
 
+    # Les rappels de démonstration désignent leur cible par la clé de
+    # l'exemple ; les identifiants réels ne sont connus qu'ici.
+    booking_ids, invoice_ids = {}, {}
+
     slot_ids = {}
     for offset, service, note in SLOTS:
         cur = conn.execute(
@@ -558,6 +608,7 @@ def _insert(conn) -> None:
              *_travel_columns(spec.get("travel"), now)),
         )
         booking_id = cur.lastrowid
+        booking_ids[spec["key"]] = booking_id
 
         for kind, amount, method, offset, note in spec.get("payments", []):
             conn.execute(
@@ -575,11 +626,15 @@ def _insert(conn) -> None:
             _insert_invoice(conn, booking, slot_date, spec["cancelled_invoice"],
                             status="cancelled", now=now)
         if spec.get("invoice"):
-            _insert_invoice(conn, booking, slot_date, spec["invoice"],
-                            status=spec["invoice"]["status"], now=now)
+            invoice_ids[spec["key"]] = _insert_invoice(
+                conn, booking, slot_date, spec["invoice"],
+                status=spec["invoice"]["status"], now=now)
+
+    _insert_reminders(conn, booking_ids, invoice_ids, now)
 
 
-def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str, now: str) -> None:
+def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str,
+                    now: str) -> int:
     lines = [(label.format(date=slot_date), qty, unit) for label, qty, unit in spec["lines"]]
     # Le taux est figé sur la facture, jamais relu dans la config : une facture
     # émise sous un régime ne doit pas changer quand le régime change.
@@ -615,6 +670,7 @@ def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str
             " VALUES (?, ?, ?, ?, ?)",
             (invoice_id, label, qty, unit, position),
         )
+    return invoice_id
 
 
 def apply() -> None:

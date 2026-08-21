@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, billing, config, content, db, diets, mailer
+from .. import auth, billing, config, content, db, diets, mailer, reminders
 
 log = logging.getLogger("chef.admin")
 
@@ -290,3 +290,28 @@ def resend_mails(booking_id: int, background: BackgroundTasks) -> dict:
         raise HTTPException(409, "Réservation annulée : rien à renvoyer.")
     background.add_task(mailer.send_booking_mails, dict(row), content.site_name())
     return {"queued": row["ref"]}
+
+
+# --- Rappels et relances -----------------------------------------------
+
+@router.get("/reminders", dependencies=[Depends(require_admin)])
+def list_reminders() -> dict:
+    """Ce qui est prévu, ce qui est parti, ce qui a échoué.
+
+    Consultation seule. Le chef ne peut ni supprimer ni antidater un rappel :
+    la file est un journal de ce que le système a décidé, et la réécrire à la
+    main la rendrait inutile comme preuve.
+    """
+    with db.cursor() as conn:
+        return reminders.overview(conn)
+
+
+@router.post("/reminders/run", dependencies=[Depends(require_admin)])
+def run_reminders() -> dict:
+    """Forcer un tour, sans attendre le prochain tick.
+
+    Sert surtout à vérifier que la chaîne fonctionne après un changement de
+    configuration SMTP -- plutôt que d'attendre trente minutes en se demandant
+    si le silence vient d'une panne ou du calendrier.
+    """
+    return reminders.run_once()
