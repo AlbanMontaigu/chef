@@ -33,6 +33,7 @@ export const api = {
   issueInvoice: (id) => request(`/api/admin/invoices/${id}/issue`, { method: 'POST' }),
   cancelInvoice: (id, reason) => request(`/api/admin/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   sendInvoice: (id) => request(`/api/admin/invoices/${id}/send`, { method: 'POST' }),
+  accounting: (year) => request(`/api/admin/accounting?year=${year}`),
   quotes: () => request('/api/admin/quotes'),
   updateQuote: (id, body) => request(`/api/admin/quotes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   openQuoteSlot: (id) => request(`/api/admin/quotes/${id}/slot`, { method: 'POST' }),
@@ -82,6 +83,8 @@ export const billing = {
   editingAddress: false,
   reminders: null,
   quotes: null,
+  accounting: null,
+  accountingYear: null,
   quoteStatuses: [],
   editingQuote: null,
 };
@@ -688,4 +691,95 @@ export function quotesPanel() {
 
   return `<div class="panel"><h2>Demandes de devis</h2>${head}
     ${rows || '<p class="hint" style="margin:0">Aucune demande pour l\'instant.</p>'}</div>`;
+}
+
+
+// --- Comptabilité --------------------------------------------------------
+
+/* Deux colonnes, et l'ordre compte : ce qui est ENCAISSÉ à gauche, ce qui est
+   FACTURÉ à droite. Au régime micro on déclare le premier — ce qui est entré
+   sur le compte pendant le trimestre — et jamais le second. Un tableau qui
+   mettrait le facturé en tête inviterait à déclarer un montant faux. */
+
+export function accountingPanel() {
+  const a = billing.accounting;
+  if (!a) return `<div class="panel"><h2>Comptabilité</h2>
+    <p class="hint" style="margin:0">Chargement…</p></div>`;
+
+  const years = a.years.map((y) =>
+    `<option value="${escapeHtml(y)}"${y === a.year ? ' selected' : ''}>${escapeHtml(y)}</option>`).join('');
+
+  const quarters = a.quarters.map((q) => `
+    <div class="quarter">
+      <b>${escapeHtml(q.amount)}</b>
+      <s>${escapeHtml(q.label)} · ${escapeHtml(q.months)}</s>
+    </div>`).join('');
+
+  const months = a.months.filter((m) => m.cents).map((m) => `
+    <div class="payment"><span>${escapeHtml(m.label)}</span><span></span>
+      <span class="num">${escapeHtml(m.amount)}</span><span></span></div>`).join('');
+
+  const methods = a.by_method.map((m) => `
+    <div class="payment"><span>${escapeHtml(m.label)}</span><span></span>
+      <span class="num">${escapeHtml(m.amount)}</span><span></span></div>`).join('');
+
+  // Un encaissement sans date lisible fausserait un trimestre en silence.
+  const undated = a.undated_cents
+    ? `<p class="error">${escapeHtml(formatAmount(a.undated_cents))} encaissés sans date
+       lisible : ces montants ne sont dans aucun trimestre. Corrigez leur date dans le
+       dossier concerné.</p>`
+    : '';
+
+  const vat = a.vat_collected_cents
+    ? `<p class="meta">TVA collectée sur les factures de l'année :
+       <strong>${escapeHtml(a.vat_collected)}</strong>.</p>`
+    : `<p class="meta">${escapeHtml(a.vat_note)} — aucune TVA collectée cette année.</p>`;
+
+  return `
+    <div class="panel">
+      <div class="folder-head">
+        <div>
+          <h2>Comptabilité ${escapeHtml(a.year)}</h2>
+          <p class="hint">Ce que vous déclarez au régime micro, c'est <strong>l'encaissé</strong> :
+            ce qui est entré sur le compte pendant le trimestre. Une facture émise en mars et
+            payée en avril compte au deuxième trimestre.</p>
+        </div>
+        <label style="min-width:8rem">Année<select data-accounting-year="1">${years}</select></label>
+      </div>
+      ${undated}
+      <div class="summary">
+        <div class="stat"><b>${escapeHtml(a.cashed)}</b><s>encaissé sur l'année</s></div>
+        <div class="stat"><b>${escapeHtml(a.invoiced)}</b><s>facturé sur l'année</s></div>
+        ${a.outstanding_cents ? `<div class="stat alert"><b>${escapeHtml(a.outstanding)}</b><s>reste à encaisser</s></div>` : ''}
+      </div>
+
+      <section class="folder-section">
+        <h3>Encaissé par trimestre</h3>
+        <div class="quarters">${quarters}</div>
+        <p class="hint">C'est cette ligne que vous reportez dans votre déclaration.</p>
+      </section>
+
+      <section class="folder-section">
+        <h3>Détail par mois</h3>
+        ${months || '<p class="hint" style="margin:0">Rien d\'encaissé cette année.</p>'}
+      </section>
+
+      <section class="folder-section">
+        <h3>Par moyen de paiement</h3>
+        ${methods || '<p class="hint" style="margin:0">Rien d\'encaissé cette année.</p>'}
+        ${vat}
+      </section>
+
+      <section class="folder-section">
+        <h3>Exporter</h3>
+        <p class="hint">Fichiers CSV, séparateur point-virgule : ils s'ouvrent directement
+          dans un tableur français. À donner tels quels à un comptable.</p>
+        <div class="actions">
+          <a class="btn primary" href="/api/admin/accounting/payments.csv?year=${escapeHtml(a.year)}">
+            Encaissements ${escapeHtml(a.year)} (${escapeHtml(a.payments)} lignes)</a>
+          <a class="btn" href="/api/admin/accounting/invoices.csv?year=${escapeHtml(a.year)}">
+            Factures ${escapeHtml(a.year)} (${escapeHtml(a.invoices)} lignes)</a>
+        </div>
+      </section>
+    </div>`;
 }

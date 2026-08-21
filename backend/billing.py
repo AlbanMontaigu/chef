@@ -29,6 +29,9 @@ PRICING_LABEL = {
     "fixed": "forfait",
     "quote": "sur devis",
 }
+PAYMENT_KIND_LABEL = {
+    "acompte": "Acompte", "solde": "Solde", "remboursement": "Remboursement",
+}
 PAYMENT_METHOD_LABEL = {
     "virement": "virement", "especes": "espèces", "cheque": "chèque",
     "cb": "carte", "autre": "autre",
@@ -214,16 +217,16 @@ def default_lines(conn: sqlite3.Connection, booking: dict) -> list[tuple[str, in
     guests = int(booking["guests"])
     label = (formula["name"] if formula else booking.get("formula")) or "Prestation de chef à domicile"
     if formula and formula["pricing"] == "per_guest" and formula["price_cents"] > 0:
-        return [(f"{label} — {_service_label(booking['service'])} du {booking['date']}",
+        return [(f"{label} — {service_label(booking['service'])} du {booking['date']}",
                  guests, int(formula["price_cents"]))]
     if formula and formula["pricing"] == "fixed" and formula["price_cents"] > 0:
-        return [(f"{label} — {_service_label(booking['service'])} du {booking['date']}",
+        return [(f"{label} — {service_label(booking['service'])} du {booking['date']}",
                  1, int(formula["price_cents"]))]
-    return [(f"{label} — {_service_label(booking['service'])} du {booking['date']}, "
+    return [(f"{label} — {service_label(booking['service'])} du {booking['date']}, "
              f"{guests} convives", 1, 0)]
 
 
-def _service_label(service: str) -> str:
+def service_label(service: str) -> str:
     return {"midi": "déjeuner", "soir": "dîner"}.get(service, service)
 
 

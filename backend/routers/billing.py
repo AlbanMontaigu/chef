@@ -23,11 +23,11 @@ le client et la séquence doit rester sans trou.
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
-from .. import (auth, billing, config, content, db, invoice_html, mailer, menus,
-                money, settings, travel)
+from .. import (accounting, auth, billing, config, content, db, invoice_html, mailer,
+                menus, money, settings, travel)
 
 log = logging.getLogger("chef.billing.api")
 
@@ -610,3 +610,44 @@ def send_menu(booking_id: int, background: BackgroundTasks) -> dict:
     menu = {**menu, "lines": menus.loads(menu["lines"])}
     background.add_task(mailer.send_menu, dict(row), menu, content.site_name())
     return {"queued": row["ref"]}
+
+
+# --- Comptabilité ------------------------------------------------------
+
+def _year(value: str | int | None) -> int:
+    """Année demandée, bornée. Une valeur illisible retombe sur l'année en
+    cours plutôt que d'échouer : c'est un paramètre d'affichage."""
+    try:
+        year = int(value)
+    except (TypeError, ValueError):
+        return billing.today().year
+    return year if 2000 <= year <= 2200 else billing.today().year
+
+
+@router.get("/accounting")
+def accounting_summary(year: str = "") -> dict:
+    with db.cursor() as conn:
+        return accounting.summary(conn, _year(year or billing.today().year))
+
+
+@router.get("/accounting/payments.csv", response_class=PlainTextResponse)
+def export_payments(year: str = "") -> PlainTextResponse:
+    """Encaissements de l'année, en CSV. C'est la base déclarable au micro."""
+    value = _year(year or billing.today().year)
+    with db.cursor() as conn:
+        body = accounting.payments_csv(conn, value)
+    return PlainTextResponse(
+        body, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="encaissements-{value}.csv"',
+                 "Cache-Control": "no-store"})
+
+
+@router.get("/accounting/invoices.csv", response_class=PlainTextResponse)
+def export_invoices(year: str = "") -> PlainTextResponse:
+    value = _year(year or billing.today().year)
+    with db.cursor() as conn:
+        body = accounting.invoices_csv(conn, value)
+    return PlainTextResponse(
+        body, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="factures-{value}.csv"',
+                 "Cache-Control": "no-store"})

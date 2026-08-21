@@ -4,7 +4,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
          settingsPanel, remindersPanel, quotesPanel, travelBadge, captureDraft,
-         draftPayload, captureMenu, menuPayload } from './billing.js';
+         draftPayload, captureMenu, menuPayload, accountingPanel } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -15,6 +15,7 @@ const TABS = [
   ['facturation', 'Facturation'],
   ['formules', 'Formules'],
   ['devis', 'Devis'],
+  ['comptabilite', 'Comptabilité'],
   ['relances', 'Relances'],
   ['reglages', 'Réglages'],
 ];
@@ -242,6 +243,7 @@ function tabBody() {
   if (view.tab === 'reglages') return settingsPanel();
   if (view.tab === 'relances') return remindersPanel();
   if (view.tab === 'devis') return quotesPanel();
+  if (view.tab === 'comptabilite') return accountingPanel();
   if (view.tab === 'formules') return formulasPanel();
   if (view.tab === 'facturation') return invoicesPanel();
   return `<div class="admin-split">
@@ -305,6 +307,9 @@ async function refresh() {
       billing.pricingKinds = data.pricing_kinds;
     }
     if (view.tab === 'relances') billing.reminders = await api.reminders();
+    if (view.tab === 'comptabilite') {
+      billing.accounting = await api.accounting(billing.accountingYear ?? new Date().getFullYear());
+    }
     // Les devis sont TOUJOURS rechargés, même hors de l'onglet : le compte de
     // demandes à traiter s'affiche dans le résumé de tête, sur toutes les
     // pages, et un compte périmé est une information fausse plutôt qu'absente.
@@ -518,6 +523,13 @@ app.addEventListener('submit', async (event) => {
     view.busy = false;
     render();
   }
+});
+
+app.addEventListener('change', (event) => {
+  const yearPicker = event.target.closest('[data-accounting-year]');
+  if (!yearPicker) return;
+  billing.accountingYear = Number(yearPicker.value);
+  refresh();
 });
 
 app.addEventListener('click', (event) => {

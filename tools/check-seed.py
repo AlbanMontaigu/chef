@@ -16,7 +16,10 @@ Sort en code 1 dès qu'un état n'est pas représenté. N'écrit que dans un
 répertoire temporaire : aucune base existante n'est touchée.
 """
 
+import csv
+import io
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -27,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, diets, menus, reminders, seed, settings
+from backend import accounting, billing, db, diets, menus, reminders, seed, settings
 from backend.routers import client
 from backend.routers.billing import SettingsIn  # noqa: E402  (l'env doit précéder l'import)
 
@@ -61,10 +64,32 @@ def _load() -> dict:
         data["cancellation"] = {
             b["ref"]: client._cancellation(conn, b) for b in data["bookings"]
         }
+        data["accounting"] = accounting.summary(conn, billing.today().year)
+        data["csv_payments"] = accounting.payments_csv(conn, billing.today().year)
+        data["csv_invoices"] = accounting.invoices_csv(conn, billing.today().year)
         data["lines"] = {
             inv["id"]: billing.lines_of(conn, inv["id"]) for inv in data["invoices"]
         }
     return data
+
+
+def _no_formula_cells(body: str) -> bool:
+    """Aucune cellule de texte ne commence par un signe de formule.
+
+    Le contrôle passe par le lecteur CSV et pas par une recherche de chaîne :
+    une première version cherchait « ;- » dans le fichier et échouait sur les
+    remboursements, dont le montant NÉGATIF commence légitimement par un moins.
+    Un montant a le droit de commencer par « - » ; un libellé, non.
+    """
+    rows = list(csv.reader(io.StringIO(body.lstrip("\ufeff")), delimiter=";"))
+    for row in rows[1:]:
+        for cell in row:
+            if cell[:1] not in ("=", "+", "-", "@"):
+                continue
+            # Seul un nombre (« -67,50 ») est toléré tel quel.
+            if not re.fullmatch(r"-?\d+,\d{2}", cell):
+                return False
+    return True
 
 
 def _settings_survive_partial_save() -> bool:
@@ -185,6 +210,37 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("envoi de facture réussi", any(i["mail_status"] == "sent" for i in issued)),
         ("envoi de facture en échec",
          any(i["mail_status"] == "failed" and i["mail_error"] for i in issued)),
+
+        # --- Comptabilité
+        ("récapitulatif comptable sur l'année en cours",
+         d["accounting"]["cashed_cents"] != 0),
+        ("encaissements répartis sur plusieurs trimestres",
+         sum(1 for q in d["accounting"]["quarters"] if q["cents"]) > 1),
+        ("les trimestres redonnent exactement le total encaissé",
+         sum(q["cents"] for q in d["accounting"]["quarters"])
+         + d["accounting"]["undated_cents"] == d["accounting"]["cashed_cents"]),
+        ("aucun encaissement sans date lisible", d["accounting"]["undated_cents"] == 0),
+        ("plusieurs moyens de paiement dans le récapitulatif",
+         len(d["accounting"]["by_method"]) > 1),
+        ("un remboursement retranche bien du trimestre où il a lieu",
+         any(p["amount_cents"] < 0 for p in payments)),
+        ("TVA collectée calculée sur les factures assujetties",
+         d["accounting"]["vat_collected_cents"] > 0),
+        ("export des encaissements non vide",
+         d["csv_payments"].count("\r\n") > 1),
+        ("export des factures non vide", d["csv_invoices"].count("\r\n") > 1),
+        ("export en point-virgule (séparateur d'un tableur français)",
+         ";" in d["csv_payments"].splitlines()[0]),
+        ("export préfixé du BOM (sinon les accents ressortent en mojibake)",
+         d["csv_payments"].startswith("\ufeff")),
+        ("l'export neutralise une cellule prise pour une formule",
+         all(accounting._safe(v).startswith("'") for v in ("=1+1", "+x", "-x", "@x"))),
+        ("un vrai libellé du jeu commence par un signe de formule",
+         any((p["note"] or "")[:1] in ("=", "+", "-", "@") for p in payments)),
+        ("et il ressort neutralisé dans l'export",
+         _no_formula_cells(d["csv_payments"]) and _no_formula_cells(d["csv_invoices"])),
+        ("montants exportés à la virgule décimale",
+         all(("," in row.split(";")[1]) for row in d["csv_payments"].splitlines()[1:] if row)),
 
         # --- Menus
         ("menu envoyé au client", any(m["status"] == "sent" for m in d["menus"])),

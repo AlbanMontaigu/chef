@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 13
+SEED_VERSION = 14
 _MARKER = "seed_version"
 
 
@@ -406,7 +406,7 @@ BOOKINGS = [
                       ("Vaisselle et couverts", 1, 6000)],
             "mail": "sent",
         },
-        "payments": [("solde", 78000, "virement", -20, "")],
+        "payments": [("solde", 78000, "virement", -20, "-5 % remise chantier, déjà déduite")],
     },
     # Vignoble : loin, mais adresse précise — l'estimation reste exacte.
     {
