@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 7
+SEED_VERSION = 8
 _MARKER = "seed_version"
 
 
@@ -92,6 +92,12 @@ FORMULAS = [
     ("hiver", "Menu d'hiver",
      "Gibier, racines, longues cuissons. Carte de l'an dernier.",
      "per_guest", 6500, 4, 0),
+    ("table-hotes", "Table d'hôtes",
+     "Un plat unique, mijoté, servi en grande cocotte au centre de la table.",
+     "per_guest", 3200, 2, 1),
+    ("bord-de-mer", "Menu bord de mer",
+     "Coquillages, poissons de petits bateaux, algues. Selon la criée du matin.",
+     "per_guest", 8900, 6, 1),
 ]
 
 SLOTS = [
@@ -113,6 +119,17 @@ SLOTS = [
     (23,  "soir", ""),
     (30,  "soir", "Dernière date avant les fêtes"),
     (44,  "soir", ""),
+    (-66, "soir", ""),
+    (-59, "midi", ""),
+    (-46, "soir", ""),
+    (-24, "midi", ""),
+    (-12, "midi", ""),
+    (2,   "midi", ""),
+    (12,  "soir", "Menu bord de mer si la criée suit"),
+    (19,  "midi", ""),
+    (26,  "soir", ""),
+    (37,  "midi", ""),
+    (51,  "soir", ""),
 ]
 
 BOOKINGS = [
@@ -301,6 +318,124 @@ BOOKINGS = [
             ("acompte", 6750, "cb", -12, ""),
             ("remboursement", -6750, "virement", -2, "Annulation du chef, remboursement intégral"),
         ],
+    },
+
+    # --- Variété de clients, de lieux et de formules -------------------
+    # Les états de l'application sont tous couverts par ce qui précède. Ce qui
+    # suit existe pour que le back-office ressemble à une activité réelle
+    # plutôt qu'à une liste d'exemples : particuliers et sociétés, ville et
+    # campagne, bord de mer et vignoble, deux couverts et vingt-quatre.
+
+    # Société, gros volume, bord de mer : le plus long trajet du jeu, et une
+    # adresse en lieu-dit — donc une estimation approchée assumée.
+    {
+        "key": "domaine", "slot": (-66, "soir"), "ref": "R-M4XVQ8",
+        "name": "Domaine des Salines", "email": "reservation@example.com",
+        "phone": "02 40 60 14 22", "address": "Route des Marais, lieu-dit La Grande Prée",
+        "city": "44500 La Baule-Escoublac",
+        "guests": 24, "formula": "bord-de-mer",
+        "message": "Séminaire de clôture. Deux personnes sans gluten, une sans lactose.",
+        "mail": ("sent", "sent", ""),
+        "travel": (3300, 71000, "", True),
+        "invoice": {
+            "status": "issued", "issued": -65, "due": -35,
+            "lines": [("Menu bord de mer — dîner du {date}", 24, 8900),
+                      ("Déplacement La Baule (aller-retour)", 1, 12000),
+                      ("Second de cuisine", 1, 22000)],
+            "mail": "sent", "notes": "Facture à adresser au service comptabilité.",
+        },
+        "payments": [
+            ("acompte", 100000, "virement", -60, "Acompte 30 %"),
+            ("solde", 147600, "virement", -34, ""),
+        ],
+    },
+    # Deux couverts : le minimum, et un appartement avec un interphone.
+    {
+        "key": "duo", "slot": (-59, "midi"), "ref": "R-C7NHB2",
+        "name": "Gérard et Michèle Lambert", "email": "lambert.gm@example.com",
+        "phone": "06 82 14 55 30", "address": "8 rue de la Fontaine, appartement 4B",
+        "city": "44300 Nantes",
+        "guests": 2, "formula": "table-hotes",
+        "message": "Cinquante ans de mariage. Interphone au nom de Lambert.",
+        "mail": ("sent", "sent", ""),
+        "travel": (960, 6100, ""),
+        "invoice": {
+            "status": "issued", "issued": -58, "due": -28,
+            "lines": [("Table d'hôtes — déjeuner du {date}", 2, 3200)],
+            "mail": "sent",
+        },
+        "payments": [("solde", 6400, "cb", -58, "")],
+    },
+    # Repas d'équipe dans un atelier, en zone d'activité.
+    {
+        "key": "atelier_pro", "slot": (-46, "soir"), "ref": "R-V3RKD6",
+        "name": "Menuiserie Guillou", "email": "contact@example.com",
+        "phone": "02 51 78 09 44", "address": "17 impasse des Charpentiers, ZA de la Pentecôte",
+        "city": "44115 Basse-Goulaine",
+        "guests": 16, "formula": "decouverte",
+        "message": "Fin de chantier, repas dans l'atelier. Prévoir des tréteaux.",
+        "mail": ("sent", "sent", ""),
+        "travel": (1140, 9700, ""),
+        "invoice": {
+            "status": "issued", "issued": -45, "due": -15,
+            "lines": [("Menu Découverte — dîner du {date}", 16, 4500),
+                      ("Vaisselle et couverts", 1, 6000)],
+            "mail": "sent",
+        },
+        "payments": [("solde", 78000, "virement", -20, "")],
+    },
+    # Vignoble : loin, mais adresse précise — l'estimation reste exacte.
+    {
+        "key": "vignoble", "slot": (-24, "midi"), "ref": "R-B8FTQ5",
+        "name": "Isabelle Chauvet", "email": "i.chauvet@example.com",
+        "phone": "06 74 22 18 90", "address": "3 chemin des Vignes",
+        "city": "44190 Clisson",
+        "guests": 7, "formula": "signature",
+        "message": "Déjeuner dans le chai. Cuisine d'été à disposition.",
+        "mail": ("sent", "sent", ""),
+        "travel": (1980, 28400, ""),
+        "payments": [],
+    },
+    # Client fidèle, réglé en espèces sur place.
+    {
+        "key": "fidele", "slot": (-12, "midi"), "ref": "R-H5WPN9",
+        "name": "Thierry Ollivier", "email": "t.ollivier@example.com",
+        "phone": "06 19 63 47 05", "address": "42 boulevard des Belges",
+        "city": "44300 Nantes",
+        "guests": 5, "formula": "table-hotes",
+        "message": "Comme d'habitude, un peu moins salé.",
+        "mail": ("sent", "sent", ""),
+        "travel": (780, 4900, ""),
+        "invoice": {
+            "status": "issued", "issued": -11, "due": 19,
+            "lines": [("Table d'hôtes — déjeuner du {date}", 5, 3200)],
+            "mail": "sent",
+        },
+        "payments": [("solde", 16000, "especes", -11, "")],
+    },
+    # À venir, en presqu'île : une heure de route, à voir avant d'accepter.
+    {
+        "key": "presquile", "slot": (12, "soir"), "ref": "R-Z2JDL7",
+        "name": "Camille Perrot", "email": "camille.perrot@example.com",
+        "phone": "07 55 08 31 62", "address": "9 quai Leray",
+        "city": "44210 Pornic",
+        "guests": 6, "formula": "bord-de-mer",
+        "message": "Terrasse face au port si la météo le permet.",
+        "mail": ("sent", "sent", ""),
+        "travel": (3060, 58200, ""),
+        "payments": [],
+    },
+    # À venir, tout près, sans rien de particulier : le cas le plus banal
+    # doit exister lui aussi, sinon le jeu ne ressemble à rien de réel.
+    {
+        "key": "voisin", "slot": (19, "midi"), "ref": "R-N6QGS3",
+        "name": "Léa Fontaine", "email": "lea.fontaine@example.com",
+        "phone": "06 45 77 12 08", "address": "6 rue Crébillon",
+        "city": "44000 Nantes",
+        "guests": 4, "formula": "decouverte", "message": "",
+        "mail": ("sent", "sent", ""),
+        "travel": (420, 1600, ""),
+        "payments": [],
     },
 ]
 
