@@ -50,6 +50,7 @@ Le montage doit apparaître avec `"Destination":"/app/backend/data"`.
 | `VAT_NOTE` | mention imprimée quand `VAT_RATE_BP` vaut 0 | défaut « TVA non applicable, art. 293 B du CGI » |
 | `INVOICE_PREFIX` | préfixe des numéros de facture | défaut `F` (`F2026-001`) |
 | `PAYMENT_TERMS_DAYS` | échéance proposée sur un nouveau brouillon | défaut `30` |
+| `TRAVEL_MAX_KM` | au-delà, l'estimation de trajet est refusée comme invraisemblable | défaut `150` |
 | `SEED_DEMO` | pose le jeu de démonstration | défaut : allumé en `DEV`, **éteint en production** |
 | `INVOICE_IBAN` | IBAN imprimé sur les factures | aucune coordonnée bancaire sur la facture |
 | `INVOICE_BIC` | BIC associé | IBAN seul |

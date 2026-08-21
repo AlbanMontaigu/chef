@@ -90,7 +90,10 @@ function form() {
         <label>E-mail<input name="email" type="email" value="${escapeHtml(f.email)}" required maxlength="160" autocomplete="email" placeholder="vous@exemple.fr"></label>
         <label>Téléphone<input name="phone" type="tel" value="${escapeHtml(f.phone)}" maxlength="40" autocomplete="tel" placeholder="06 12 34 56 78"></label>
       </div>
-      <label>Adresse du repas<input name="address" value="${escapeHtml(f.address)}" maxlength="300" autocomplete="street-address" placeholder="12 rue de l'Église, Nantes"></label>
+      <div class="row">
+        <label>Adresse du repas<input name="address" value="${escapeHtml(f.address)}" maxlength="300" autocomplete="street-address" placeholder="12 rue de l'Église"></label>
+        <label>Code postal et ville<input name="city" value="${escapeHtml(f.city)}" maxlength="120" autocomplete="address-level2" placeholder="44000 Nantes"></label>
+      </div>
       ${options ? `<label>Formule envisagée<select name="formula"><option value="">À définir ensemble</option>${options}</select></label>` : ''}
       <label>Allergies, envies, contraintes<textarea name="message" rows="3" maxlength="2000" placeholder="Un invité végétarien, une cuisine sans four…">${escapeHtml(f.message)}</textarea></label>
       ${cfg.notice ? `<p class="notice">${escapeHtml(cfg.notice)}</p>` : ''}

@@ -3,7 +3,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
          BILLING_STATE_LABEL } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
-         settingsPanel, itinerary, captureDraft, draftPayload } from './billing.js';
+         settingsPanel, travelBadge, captureDraft, draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -41,6 +41,7 @@ const api = {
   bookings: () => request('/api/admin/bookings?status=confirmed'),
   cancel: (id, reason) => request(`/api/admin/bookings/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   resend: (id) => request(`/api/admin/bookings/${id}/resend`, { method: 'POST' }),
+  travel: (id) => request(`/api/admin/bookings/${id}/travel`, { method: 'POST' }),
   ...billingApi,
 };
 
@@ -221,7 +222,7 @@ function bookingsPanel() {
       <p class="meta">${billingLine(b)}</p>
       <div class="actions">
         ${mailBadge(b)}
-        ${itinerary(billing.settings.chef_address, b.address, 'Trajet')}
+        ${travelBadge(b, billing.settings.chef_address)}
         <button class="btn" data-folder-open="${b.id}">Facturation</button>
         <button class="btn danger" data-cancel="${b.id}">Annuler</button>
         <button class="btn" data-resend="${b.id}">Renvoyer les e-mails</button>
@@ -623,6 +624,19 @@ app.addEventListener('click', (event) => {
     act(async () => {
       const r = await api.cancel(Number(cancel.dataset.cancel), reason);
       return `Réservation ${r.cancelled} annulée, le client est prévenu et la date est de nouveau libre.`;
+    });
+    return;
+  }
+
+  const travelBtn = event.target.closest('[data-travel]');
+  if (travelBtn) {
+    act(async () => {
+      const r = await api.travel(Number(travelBtn.dataset.travel));
+      // Le motif d'échec est rendu tel quel : le chef doit pouvoir distinguer
+      // « adresse incomplète », qu'il peut corriger, de « service
+      // injoignable », où il n'y a qu'à réessayer.
+      return r.error ? `Trajet non estimé : ${r.error}`
+                     : `Trajet estimé : ${r.label}${r.km ? `, ${r.km} km` : ''} en voiture, sans trafic.`;
     });
     return;
   }

@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS bookings (
     email         TEXT NOT NULL,
     phone         TEXT NOT NULL DEFAULT '',
     address       TEXT NOT NULL DEFAULT '',
+    -- Séparé de la rue : sans code postal ni ville, un géocodeur ne peut pas
+    -- distinguer deux rues homonymes, et une durée de trajet fausse est pire
+    -- qu'une durée absente.
+    city          TEXT NOT NULL DEFAULT '',
     guests        INTEGER NOT NULL,
     -- Libellé de la formule figé au moment de la réservation : la formule
     -- peut être renommée ou retirée ensuite, ce que le client a choisi ce
@@ -37,7 +41,18 @@ CREATE TABLE IF NOT EXISTS bookings (
     -- 1 = posée par le jeu de démonstration. Porté par la réservation et non
     -- déduit du créneau : un vrai client qui réserverait un créneau semé par
     -- erreur serait sinon effacé avec les exemples.
-    demo          INTEGER NOT NULL DEFAULT 0
+    demo          INTEGER NOT NULL DEFAULT 0,
+    -- Estimation de trajet, calculée à la demande depuis le back-office et
+    -- conservée ici : les services interrogés sont publics et sans garantie,
+    -- on ne les rappelle donc pas à chaque affichage. `travel_error` retient
+    -- le motif d'un échec, pour l'afficher au lieu d'un blanc.
+    travel_seconds INTEGER,
+    travel_meters  INTEGER,
+    travel_error   TEXT NOT NULL DEFAULT '',
+    -- Adresse telle que le géocodeur l'a comprise. Affichée au chef : c'est le
+    -- seul moyen qu'il repère qu'une adresse approximative a été mal placée.
+    travel_label   TEXT NOT NULL DEFAULT '',
+    travel_at      TEXT
 );
 
 -- Double-booking protection at the storage layer, not in application logic:
@@ -141,3 +156,16 @@ CREATE TABLE IF NOT EXISTS invoice_lines (
 );
 
 CREATE INDEX IF NOT EXISTS invoice_lines_by_invoice ON invoice_lines (invoice_id, position);
+
+
+-- --------------------------------------------------------------------
+-- Adresses déjà géocodées. Le service de géocodage utilisé demande
+-- explicitement que les résultats soient mis en cache plutôt que redemandés :
+-- cette table est cette mise en cache. Une adresse ne bouge pas.
+CREATE TABLE IF NOT EXISTS geocache (
+    query      TEXT PRIMARY KEY,
+    lat        REAL,
+    lon        REAL,
+    label      TEXT NOT NULL DEFAULT '',   -- adresse telle que reconnue, pour vérification
+    created_at TEXT NOT NULL
+);

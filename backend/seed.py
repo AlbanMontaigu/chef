@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 4
+SEED_VERSION = 6
 _MARKER = "seed_version"
 
 
@@ -120,7 +120,9 @@ BOOKINGS = [
     {
         "key": "soldee", "slot": (-24, "soir"), "ref": "R-KH4T7A",
         "name": "Claire Berthier", "email": "claire.berthier@example.com",
-        "phone": "06 24 81 09 55", "address": "14 rue des Halles, Nantes",
+        "phone": "06 24 81 09 55", "address": "14 rue des Halles", "city": "44000 Nantes",
+        # Trajet déjà estimé : le cas nominal.
+        "travel": (1080, 7400, ""),
         "guests": 8, "formula": "signature",
         "message": "Un invité ne mange pas de crustacés.",
         "mail": ("sent", "sent", ""),
@@ -139,7 +141,8 @@ BOOKINGS = [
     {
         "key": "acompte", "slot": (-17, "midi"), "ref": "R-9WQMFE",
         "name": "Julien Pasquier", "email": "j.pasquier@example.com",
-        "phone": "07 61 44 12 03", "address": "3 impasse du Verger, Rezé",
+        "phone": "07 61 44 12 03", "address": "3 impasse du Verger", "city": "44400 Rezé",
+        "travel": (1500, 11200, ""),
         "guests": 6, "formula": "decouverte",
         "message": "Repas d'anniversaire, gâteau prévu de notre côté.",
         "mail": ("sent", "sent", ""),
@@ -155,7 +158,8 @@ BOOKINGS = [
     {
         "key": "refacturee", "slot": (-10, "soir"), "ref": "R-3XKLPT",
         "name": "Sophie Ramanantsoa", "email": "sophie.r@example.com",
-        "phone": "06 07 55 31 20", "address": "27 bd des Poilus, Saint-Herblain",
+        "phone": "06 07 55 31 20", "address": "27 bd des Poilus", "city": "44800 Saint-Herblain",
+        "travel": (1320, 9800, ""),
         "guests": 12, "formula": "reception",
         "message": "Cocktail dînatoire pour un départ en retraite.",
         "mail": ("sent", "sent", ""),
@@ -176,7 +180,8 @@ BOOKINGS = [
     {
         "key": "impayee", "slot": (-45, "midi"), "ref": "R-P4WXQ7",
         "name": "Bruno Delalande", "email": "bruno.delalande@example.com",
-        "phone": "06 88 44 09 71", "address": "6 rue du Port, Trentemoult",
+        "phone": "06 88 44 09 71", "address": "6 rue du Port", "city": "44200 Nantes",
+        "travel": (900, 5600, ""),
         "guests": 5, "formula": "hiver",
         "message": "",
         "mail": ("sent", "sent", ""),
@@ -193,7 +198,8 @@ BOOKINGS = [
     {
         "key": "tva", "slot": (-38, "soir"), "ref": "R-J9CMR3",
         "name": "Atelier Lumen SARL", "email": "compta@example.com",
-        "phone": "02 40 12 88 30", "address": "9 quai de la Fosse, 44000 Nantes",
+        "phone": "02 40 12 88 30", "address": "9 quai de la Fosse", "city": "44000 Nantes",
+        "travel": (720, 3100, ""),
         "guests": 14, "formula": "reception",
         "message": "Dîner d'entreprise, facture au nom de la société.",
         "mail": ("sent", "sent", ""),
@@ -209,7 +215,8 @@ BOOKINGS = [
     {
         "key": "trop_percu", "slot": (-52, "soir"), "ref": "R-T6HKV2",
         "name": "Hélène Nguyen", "email": "helene.nguyen@example.com",
-        "phone": "06 51 30 22 47", "address": "2 allée des Tanneurs, Nantes",
+        "phone": "06 51 30 22 47", "address": "2 allée des Tanneurs", "city": "44000 Nantes",
+        "travel": (600, 2400, ""),
         "guests": 4, "formula": "decouverte", "message": "",
         "mail": ("sent", "sent", ""),
         "invoice": {
@@ -223,7 +230,9 @@ BOOKINGS = [
     {
         "key": "a_facturer", "slot": (-3, "soir"), "ref": "R-YT7CD4",
         "name": "Marc Lefeuvre", "email": "marc.lefeuvre@example.com",
-        "phone": "06 12 90 44 78", "address": "8 chemin de la Loire, Couëron",
+        "phone": "06 12 90 44 78", "address": "8 chemin de la Loire", "city": "44220 Couëron",
+        # Jamais demandé : le bouton « Estimer le trajet » doit être visible.
+        "travel": None,
         "guests": 4, "formula": "decouverte", "message": "",
         "mail": ("sent", "sent", ""),
         "payments": [],
@@ -234,7 +243,12 @@ BOOKINGS = [
     {
         "key": "sans_formule", "slot": (-31, "midi"), "ref": "R-D2VYN8",
         "name": "Farid Benali", "email": "farid.benali@example.com",
-        "phone": "", "address": "Salle des fêtes, Bouguenais",
+        "phone": "", "address": "Salle des fêtes", "city": "",
+        # Ville manquante : l'estimation est refusée AVANT tout appel réseau,
+        # parce qu'une rue sans ville se fait localiser au hasard dans toute la
+        # France. Le motif doit se lire.
+        "travel": (None, None, "code postal et ville manquants sur cette réservation — "
+                               "sans eux, l'adresse ne peut pas être localisée de façon sûre"),
         "guests": 9, "formula": None,
         "message": "On verra le menu ensemble, plutôt méditerranéen.",
         "mail": ("disabled", "disabled", "SMTP_HOST non configuré"),
@@ -248,7 +262,8 @@ BOOKINGS = [
     {
         "key": "brouillon", "slot": (9, "soir"), "ref": "R-KMN3W7",
         "name": "Élodie Grangier", "email": "elodie.grangier@example.com",
-        "phone": "07 88 21 65 40", "address": "5 rue Kervégan, Nantes",
+        "phone": "07 88 21 65 40", "address": "5 rue Kervégan", "city": "44000 Nantes",
+        "travel": (840, 4200, ""),
         "guests": 10, "formula": "signature",
         "message": "Deux personnes végétariennes, une allergie aux fruits à coque.",
         "mail": ("sent", "sent", ""),
@@ -265,7 +280,7 @@ BOOKINGS = [
         # Ni téléphone ni adresse : le formulaire ne les exige pas, et le
         # back-office doit rester lisible quand le client s'en tient au
         # minimum — y compris le lien d'itinéraire, qui explique son absence.
-        "phone": "", "address": "",
+        "phone": "", "address": "", "city": "",
         "guests": 6, "formula": "decouverte", "message": "",
         "mail": ("failed", "sent", "SMTPRecipientsRefused: 550 mailbox unavailable"),
         "payments": [],
@@ -275,7 +290,8 @@ BOOKINGS = [
     {
         "key": "annulee", "slot": (23, "midi"), "ref": "R-LW8JCH",
         "name": "Nadia Bouchard", "email": "nadia.bouchard@example.com",
-        "phone": "06 33 77 12 84", "address": "19 rue du Calvaire, Nantes",
+        "phone": "06 33 77 12 84", "address": "19 rue du Calvaire", "city": "44000 Nantes",
+        "travel": (660, 2900, ""),
         "guests": 5, "formula": "decouverte", "message": "",
         "status": "cancelled", "cancelled": -2,
         "mail": ("sent", "sent", ""),
@@ -318,6 +334,18 @@ def _has_real_bookings(conn) -> bool:
     return conn.execute("SELECT 1 FROM bookings WHERE demo = 0 LIMIT 1").fetchone() is not None
 
 
+def _travel_columns(spec, now: str) -> tuple:
+    """(secondes, mètres, erreur, calculé_le) pour la colonne de trajet.
+
+    `None` veut dire « jamais demandé » — pas « échoué » : le back-office doit
+    proposer le bouton plutôt qu'afficher un échec qui n'a pas eu lieu.
+    """
+    if spec is None:
+        return (None, None, "", None)
+    seconds, meters, error = spec
+    return (seconds, meters, error, now)
+
+
 def _insert(conn) -> None:
     now = billing.now_iso()
 
@@ -350,17 +378,20 @@ def _insert(conn) -> None:
         # ligne à chiffrer.
         slug = spec["formula"]
         cur = conn.execute(
-            """INSERT INTO bookings (ref, slot_id, name, email, phone, address, guests,
+            """INSERT INTO bookings (ref, slot_id, name, email, phone, address, city, guests,
                                      formula, formula_id, message, status, created_at,
-                                     cancelled_at, mail_client, mail_chef, mail_error, demo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                                     cancelled_at, mail_client, mail_chef, mail_error,
+                                     travel_seconds, travel_meters, travel_error, travel_at,
+                                     demo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (spec["ref"], slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
-             spec["address"], spec["guests"],
+             spec["address"], spec.get("city", ""), spec["guests"],
              formula_names.get(slug, "") if slug else "",
              formula_ids.get(slug) if slug else None, spec["message"],
              spec.get("status", "confirmed"), _d(slot_key[0] - 30),
              _d(spec["cancelled"]) if spec.get("cancelled") is not None else None,
-             mail_client, mail_chef, mail_error),
+             mail_client, mail_chef, mail_error,
+             *_travel_columns(spec.get("travel"), now)),
         )
         booking_id = cur.lastrowid
 

@@ -68,6 +68,7 @@ async function submit() {
       email: f.email.trim(),
       phone: f.phone.trim(),
       address: f.address.trim(),
+      city: f.city.trim(),
       guests: Number(f.guests),
       formula: f.formula,
       message: f.message.trim(),

@@ -16,7 +16,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-from . import config, content, money, settings
+from . import config, content, money, settings, travel
 
 log = logging.getLogger("chef.billing")
 
@@ -184,12 +184,19 @@ def seller_identity() -> dict:
     }
 
 
+def full_address(booking: dict) -> str:
+    """Rue + code postal et ville, composés ici et nulle part ailleurs : la
+    facture, le géocodage et l'itinéraire doivent parler de la même adresse."""
+    parts = [(booking.get("address") or "").strip(), (booking.get("city") or "").strip()]
+    return ", ".join(p for p in parts if p)
+
+
 def client_identity(booking: dict) -> dict:
     return {
         "name": booking["name"],
         "email": booking["email"],
         "phone": booking.get("phone") or "",
-        "address": booking.get("address") or "",
+        "address": full_address(booking),
     }
 
 
@@ -290,6 +297,8 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         # besoin pour proposer l'itinéraire, et la refaire chercher par un
         # second appel ferait clignoter le lien après coup.
         "chef_address": settings.chef_address(),
+        "client_address": full_address(booking),
+        "travel": travel_view(booking),
         "estimate_cents": estimate,
         "paid_cents": paid,
         "due_cents": due,
@@ -297,6 +306,21 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         "state": payment_state(due, paid),
         "payments": payments_of(conn, booking["id"]),
         "invoice": _invoice_view(conn, invoice) if invoice else None,
+    }
+
+
+def travel_view(booking: dict) -> dict:
+    """Ce que le back-office affiche du trajet : une estimation conservée, ou
+    le motif pour lequel il n'y en a pas. Jamais un blanc."""
+    return {
+        "seconds": booking.get("travel_seconds"),
+        "meters": booking.get("travel_meters"),
+        "label": travel.format_duration(booking.get("travel_seconds")),
+        "km": (round(booking["travel_meters"] / 1000, 1)
+               if booking.get("travel_meters") else None),
+        "error": booking.get("travel_error") or "",
+        "label_seen": booking.get("travel_label") or "",
+        "computed_at": booking.get("travel_at"),
     }
 
 

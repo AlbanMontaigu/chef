@@ -76,6 +76,14 @@ INVOICE_IBAN = os.environ.get("INVOICE_IBAN", "")
 INVOICE_BIC = os.environ.get("INVOICE_BIC", "")
 PAYMENT_TERMS_DAYS = int(os.environ.get("PAYMENT_TERMS_DAYS", "30"))
 
+# --- Trajet ------------------------------------------------------------
+# Au-delà de cette distance, l'estimation est refusée plutôt qu'affichée : un
+# chef à domicile ne parcourt pas 700 km, et une adresse incomplète se fait
+# volontiers localiser à l'autre bout du pays. Constaté pour de vrai en test :
+# « Salle des fêtes » sans ville est ressorti à 756 km, avec une durée d'allure
+# parfaitement crédible.
+TRAVEL_MAX_KM = int(os.environ.get("TRAVEL_MAX_KM", "150"))
+
 # --- Jeu de démonstration ---------------------------------------------
 # Semer une base vide de données parlantes est précieux en développement et
 # dangereux en production. L'interrupteur est donc explicite, allumé en DEV

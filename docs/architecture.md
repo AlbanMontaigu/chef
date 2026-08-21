@@ -148,17 +148,53 @@ pouvoir changer seul : aujourd'hui son adresse de départ. Elle ne sort jamais
 par `/api/content` — le site public n'a aucune raison de savoir d'où part le
 chef — et n'apparaît sur aucune facture.
 
-Le back-office en tire un **lien d'itinéraire** vers l'application de cartes,
-pas un temps de trajet calculé sur place. Ce serait un appel réseau sortant
-vers un service tiers, que la contrainte 3 du projet interdit à la page et que
-la contrainte 2 rendrait coûteux côté serveur : géocoder deux adresses puis
-router, avec une clé à gérer ou un service public sans garantie, et un chemin
-d'échec de plus sur une fonction de confort. Le lien, lui, ne peut pas tomber
-en panne : c'est le chef qui clique, et son téléphone qui ouvre la navigation.
+### L'estimation de trajet
 
-Les trois cas sont rendus explicitement — trajet disponible, client sans
-adresse, chef sans adresse de départ. Un lien simplement absent laisserait
-croire que la fonction n'existe pas.
+`backend/travel.py` interroge **Nominatim** (adresse → coordonnées) puis
+**OSRM** (route). Aucune bibliothèque ajoutée : `urllib` suffit. Ce sont des
+serveurs publics de démonstration, sans garantie de service, d'où les règles
+qui encadrent leur usage ici.
+
+```mermaid
+flowchart TD
+    B[Bouton « Estimer le trajet »<br/>back-office uniquement] --> V{Ville renseignée ?}
+    V -- non --> R1[Refus, sans appel réseau]
+    V -- oui --> G[Géocodage Nominatim<br/>mis en cache dans geocache]
+    G -- introuvable --> R2[Refus : adresse non localisée]
+    G -- trouvée --> O[Routage OSRM]
+    O -- service KO --> R3[Refus : service injoignable]
+    O -- itinéraire --> D{Distance plausible ?}
+    D -- non --> R4[Refus : distance invraisemblable<br/>+ adresse telle que localisée]
+    D -- oui --> S[Estimation conservée sur la réservation]
+```
+
+Chacun de ces refus s'inscrit sur la réservation et s'affiche avec son motif :
+le chef doit pouvoir distinguer une adresse à corriger d'un service à
+réessayer. Aucun de ces chemins n'apparaît jamais sur le parcours d'un client —
+un service tiers indisponible ne doit pas pouvoir gêner une réservation.
+
+**Les deux garde-fous ne sont pas de la précaution abstraite, ils viennent d'un
+test raté.** « Salle des fêtes », sans ville, a été localisée dans un village à
+756 km, et l'application a affiché « 7 h 49 » avec aplomb. Une durée fausse et
+crédible est pire que pas de durée du tout. D'où :
+
+1. **Sans code postal ni ville, on ne géocode pas.** Une rue sans ville est
+   ambiguë dans toute la France, et le géocodeur tranche au hasard plutôt que
+   d'échouer. Le refus est déterministe et précède l'appel réseau.
+2. **Au-delà de `TRAVEL_MAX_KM` (150 par défaut), l'estimation est écartée**,
+   et le message donne l'adresse *telle qu'elle a été localisée* — le seul
+   moyen que le chef voie où le géocodeur s'est trompé.
+
+L'adresse reconnue est d'ailleurs affichée à côté de toute estimation acceptée,
+pour la même raison.
+
+Le résultat est conservé sur la réservation : la politique d'usage de ces
+services demande de mettre les réponses en cache plutôt que de les redemander,
+et une adresse ne bouge pas. Les géocodages le sont aussi, dans `geocache`.
+
+Le lien vers l'application de cartes reste à côté : c'est lui qui donne la
+navigation réelle, avec le trafic, et il fonctionne même quand l'estimation a
+échoué.
 
 ## Jeu de démonstration
 

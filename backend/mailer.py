@@ -105,6 +105,11 @@ def _client_body(booking: dict, site_name: str) -> str:
     )
 
 
+def _address(booking: dict) -> str:
+    parts = [(booking.get("address") or "").strip(), (booking.get("city") or "").strip()]
+    return ", ".join(p for p in parts if p) or "—"
+
+
 def _chef_body(booking: dict) -> str:
     service = SERVICE_LABEL.get(booking["service"], booking["service"])
     return (
@@ -115,7 +120,7 @@ def _chef_body(booking: dict) -> str:
         f"  Client     : {booking['name']}\n"
         f"  E-mail     : {booking['email']}\n"
         f"  Téléphone  : {booking['phone'] or '—'}\n"
-        f"  Adresse    : {booking['address'] or '—'}\n\n"
+        f"  Adresse    : {_address(booking)}\n\n"
         f"  Message    : {booking['message'] or '—'}\n\n"
         f"Back-office : {config.PUBLIC_URL}/admin\n"
     )

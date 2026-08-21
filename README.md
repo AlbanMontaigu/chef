@@ -10,8 +10,10 @@ créneaux et les réservations.
   les créneaux, suivre les réservations), la **facturation** (factures,
   encaissements, soldes) et les **formules** (tarifs) et les **réglages**.
 - **Trajet** — l'adresse de départ du chef se saisit dans Réglages ; chaque
-  dossier de réservation propose alors l'itinéraire jusqu'au client. Elle reste
-  privée : ni sur le site, ni sur les factures.
+  réservation propose alors une estimation de durée (Nominatim + OSRM, calculée
+  à la demande et conservée) et le lien vers l'application de cartes. L'adresse
+  de départ reste privée : ni sur le site, ni sur les factures. Sans code postal
+  ni ville côté client, l'estimation est refusée plutôt que devinée.
 - **Facturation** — un brouillon se prépare depuis une réservation, s'émet avec
   un numéro séquentiel définitif, s'imprime et s'envoie au client. Les
   encaissements se saisissent au fil de l'eau ; le solde est toujours leur

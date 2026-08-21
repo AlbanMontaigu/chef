@@ -104,6 +104,29 @@ rather than in an environment variable — env vars are for what an operator
 sets once (`SMTP_HOST`, `INVOICE_IBAN`), settings are for what the chef
 changes.
 
+## The travel estimate, and why it refuses so much
+
+`backend/travel.py` calls two public demo servers (Nominatim, then OSRM) from
+the **server**, never from the page, and only on an explicit back-office click.
+No dependency was added — `urllib` is enough.
+
+The rule that matters: **a confident wrong answer is worse than no answer.**
+This is not theoretical. In testing, "Salle des fêtes" with no city geocoded to
+a village 756 km away and the app reported "7 h 49" without hesitating. Two
+guards followed, and neither should be relaxed to make the feature "work more
+often":
+
+- No postcode/city on the booking → refuse **before** any network call. A
+  street without a town is ambiguous nationwide, and the geocoder guesses
+  rather than failing.
+- Distance over `TRAVEL_MAX_KM` → discard the result and report the address
+  *as it was located*, so the chef can see where it went wrong.
+
+Every refusal is stored and displayed with its reason: an address the chef can
+fix must be distinguishable from a service to retry. Results are cached (on the
+booking, and geocodes in `geocache`) because these services ask for it and
+because an address does not move.
+
 ## Money, formulas and invoices
 
 - **Every amount is an integer of cents**, front and back (`backend/money.py`,

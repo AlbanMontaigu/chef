@@ -4,14 +4,14 @@ export const state = {
   slots: [],            // [{id, date, service, note}] — uniquement les créneaux libres
   selectedDate: null,   // YYYY-MM-DD choisi dans la liste
   selectedSlot: null,   // le créneau retenu (date + service)
-  form: { name: '', email: '', phone: '', address: '', guests: '', formula: '', message: '' },
+  form: { name: '', email: '', phone: '', address: '', city: '', guests: '', formula: '', message: '' },
   submitting: false,
   error: '',
   confirmation: null,   // {ref, date, service, mail_sent}
   loadError: '',
 };
 
-export const EMPTY_FORM = { name: '', email: '', phone: '', address: '', guests: '', formula: '', message: '' };
+export const EMPTY_FORM = { name: '', email: '', phone: '', address: '', city: '', guests: '', formula: '', message: '' };
 
 export function slotsByDate() {
   const map = new Map();

@@ -28,6 +28,7 @@ class BookingIn(BaseModel):
     email: str = Field(min_length=5, max_length=160)
     phone: str = Field(default="", max_length=40)
     address: str = Field(default="", max_length=300)
+    city: str = Field(default="", max_length=120)
     guests: int = Field(ge=1, le=100)
     # Identifiant de formule (slug), pas son libellé : le nom peut être
     # réécrit dans le back-office, la référence choisie ce jour-là ne doit pas
@@ -35,7 +36,7 @@ class BookingIn(BaseModel):
     formula: str = Field(default="", max_length=120)
     message: str = Field(default="", max_length=2000)
 
-    @field_validator("name", "phone", "address", "formula", "message")
+    @field_validator("name", "phone", "address", "city", "formula", "message")
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
@@ -147,12 +148,12 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
         cur = conn.execute(
             """
             INSERT INTO bookings
-                (ref, slot_id, name, email, phone, address, guests, formula, formula_id,
-                 message, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
+                (ref, slot_id, name, email, phone, address, city, guests, formula,
+                 formula_id, message, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
             """,
             (ref, payload.slot_id, payload.name, payload.email, payload.phone,
-             payload.address, payload.guests, formula_label, formula_id,
+             payload.address, payload.city, payload.guests, formula_label, formula_id,
              payload.message, now),
         )
         booking_id = cur.lastrowid
@@ -160,7 +161,7 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
     booking = {
         "id": booking_id, "ref": ref, "date": slot["date"], "service": slot["service"],
         "name": payload.name, "email": payload.email, "phone": payload.phone,
-        "address": payload.address, "guests": payload.guests,
+        "address": payload.address, "city": payload.city, "guests": payload.guests,
         "formula": formula_label, "message": payload.message,
     }
     log.info("booking %s created for %s %s", ref, slot["date"], slot["service"])

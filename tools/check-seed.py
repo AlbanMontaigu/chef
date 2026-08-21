@@ -142,6 +142,15 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
          any(b["address"] for b in bookings)),
         ("réservation sans adresse de repas",
          any(not b["address"] for b in bookings)),
+        ("réservation avec code postal et ville", any(b["city"] for b in bookings)),
+        ("réservation sans ville (géocodage impossible)",
+         any(b["address"] and not b["city"] for b in bookings)),
+        ("trajet estimé", any(b["travel_seconds"] for b in bookings)),
+        ("trajet en échec, avec son motif",
+         any(b["travel_error"] and not b["travel_seconds"] for b in bookings)),
+        ("trajet jamais demandé (bouton « Estimer »)",
+         any(b["address"] and not b["travel_seconds"] and not b["travel_error"]
+             for b in bookings)),
     ]
 
 

@@ -34,6 +34,34 @@ export const api = {
   saveSettings: (body) => request('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
+/* Ce que le back-office montre du trajet, sur une carte comme dans un dossier.
+   Trois états, tous nommés : une estimation connue, un échec avec son motif,
+   ou rien encore demandé. Un blanc laisserait croire que la fonction manque. */
+export function travelBadge(b, chefAddress) {
+  const dest = [b.address, b.city].filter(Boolean).join(', ');
+  const link = itinerary(chefAddress, dest, 'Trajet');
+  if (b.travel_seconds) {
+    const km = b.travel_meters ? ` · ${(b.travel_meters / 1000).toFixed(1)} km` : '';
+    return `<span class="badge ok">${escapeHtml(formatDuration(b.travel_seconds))}${escapeHtml(km)}</span>${link}`;
+  }
+  if (b.travel_error) {
+    return `<span class="badge warn" title="${escapeHtml(b.travel_error)}">trajet non estimé</span>${link}`;
+  }
+  if (!dest) return '';
+  return `<button class="btn" data-travel="${b.id}">Estimer le trajet</button>${link}`;
+}
+
+/* Secondes -> « 34 min » / « 1 h 05 ». Même règle que côté serveur ; c'est le
+   serveur qui fait foi, ceci sert aux valeurs fraîchement calculées. */
+export function formatDuration(seconds) {
+  if (!seconds) return '';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+}
+
 export const billing = {
   formulas: [],
   pricingKinds: [],
@@ -269,12 +297,30 @@ function paymentsBlock(booking, data) {
    chef qui n'a pas renseigné son adresse de départ croit la fonction absente. */
 function travelLine(booking, data) {
   const from = data.chef_address;
-  const to = booking.address;
-  if (from && to) {
-    return `<p class="travel">${escapeHtml(to)} ${itinerary(from, to)}</p>`;
-  }
+  const to = data.client_address || booking.address;
   if (!to) return '<p class="travel muted">Aucune adresse de repas : le client ne l\'a pas renseignée.</p>';
-  return `<p class="travel muted">${escapeHtml(to)} — renseigne ton adresse de départ dans Réglages pour obtenir l\'itinéraire.</p>`;
+  if (!from) {
+    return `<p class="travel muted">${escapeHtml(to)} — renseigne ton adresse de départ dans Réglages pour estimer le trajet.</p>`;
+  }
+  const t = data.travel ?? {};
+  const link = itinerary(from, to);
+  let state;
+  if (t.seconds) {
+    // « estimation » et pas « durée » : c'est une conduite sans trafic, pas
+    // une promesse d'heure d'arrivée. L'adresse reconnue est montrée avec :
+    // sans elle, une localisation de travers passe inaperçue.
+    const seen = t.label_seen
+      ? `<span class="hint" style="margin:0">localisé : ${escapeHtml(t.label_seen)}</span>` : '';
+    state = `<span class="badge ok">${escapeHtml(t.label)}${t.km ? escapeHtml(` · ${t.km} km`) : ''}</span>
+             <span class="hint" style="margin:0">estimation en voiture, sans trafic</span>${seen}`;
+  } else if (t.error) {
+    state = `<span class="badge warn">trajet non estimé</span>
+             <span class="hint" style="margin:0">${escapeHtml(t.error)}</span>`;
+  } else {
+    state = '';
+  }
+  const action = `<button class="btn" data-travel="${booking.id}">${t.seconds || t.error ? 'Recalculer' : 'Estimer le trajet'}</button>`;
+  return `<p class="travel">${escapeHtml(to)} ${state} ${action} ${link}</p>`;
 }
 
 export function settingsPanel() {

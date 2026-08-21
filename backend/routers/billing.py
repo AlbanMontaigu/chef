@@ -26,7 +26,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, billing, config, content, db, invoice_html, mailer, money, settings
+from .. import auth, billing, config, content, db, invoice_html, mailer, money, settings, travel
 
 log = logging.getLogger("chef.billing.api")
 
@@ -412,6 +412,45 @@ def list_invoices(status: str = "all", limit: int = 200) -> dict:
     outstanding = sum(i["balance_cents"] for i in invoices
                       if i["status"] == "issued" and i["balance_cents"] > 0)
     return {"invoices": invoices, "outstanding_cents": outstanding}
+
+
+# --- Trajet ------------------------------------------------------------
+
+@router.post("/bookings/{booking_id}/travel")
+def compute_travel(booking_id: int) -> dict:
+    """Estime le trajet et conserve le résultat sur la réservation.
+
+    À la demande, et seulement ici : les services interrogés sont publics et
+    sans garantie, ils n'ont rien à faire sur le chemin d'une réservation
+    client. Un échec s'inscrit sur la ligne au lieu de disparaître, pour que
+    le chef sache que le calcul a été tenté et pourquoi il n'a rien donné.
+    """
+    with db.cursor() as conn:
+        booking = _booking_or_404(conn, booking_id)
+    if not (booking.get("city") or "").strip():
+        # Refus déterministe, avant tout appel réseau : une rue sans ville est
+        # ambiguë dans toute la France, et le géocodeur tranchera au hasard
+        # plutôt que d'échouer. Mieux vaut ne pas demander.
+        result = {"seconds": None, "meters": None, "origin_label": "",
+                  "destination_label": "",
+                  "error": "code postal et ville manquants sur cette réservation — "
+                           "sans eux, l'adresse ne peut pas être localisée de façon sûre"}
+    else:
+        result = travel.estimate(settings.chef_address(), billing.full_address(booking))
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE bookings SET travel_seconds = ?, travel_meters = ?, travel_error = ?,"
+            " travel_label = ?, travel_at = ? WHERE id = ?",
+            (result["seconds"], result["meters"], result["error"][:300],
+             result["destination_label"][:200], billing.now_iso(), booking_id),
+        )
+    if result["error"]:
+        log.info("trajet non estimé pour %s : %s", booking["ref"], result["error"])
+    return {
+        **result,
+        "label": travel.format_duration(result["seconds"]),
+        "km": round(result["meters"] / 1000, 1) if result["meters"] else None,
+    }
 
 
 # --- Réglages ----------------------------------------------------------
