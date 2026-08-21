@@ -122,6 +122,13 @@ often":
 - Distance over `TRAVEL_MAX_KM` → discard the result and report the address
   *as it was located*, so the chef can see where it went wrong.
 
+One approximation *is* allowed, and only because it is announced: when the
+exact address fails to geocode but the town does, the estimate is computed from
+the **town centre** and flagged `approximate` — shown as "≈ 12 min, adresse
+exacte introuvable". A rough number the chef knows is rough still answers "15
+minutes or 50?"; the same number presented as exact would be the very lie the
+rest of this module exists to prevent.
+
 Every refusal is stored and displayed with its reason: an address the chef can
 fix must be distinguishable from a service to retry. Results are cached (on the
 booking, and geocodes in `geocache`) because these services ask for it and

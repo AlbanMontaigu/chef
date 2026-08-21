@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 6
+SEED_VERSION = 7
 _MARKER = "seed_version"
 
 
@@ -159,7 +159,9 @@ BOOKINGS = [
         "key": "refacturee", "slot": (-10, "soir"), "ref": "R-3XKLPT",
         "name": "Sophie Ramanantsoa", "email": "sophie.r@example.com",
         "phone": "06 07 55 31 20", "address": "27 bd des Poilus", "city": "44800 Saint-Herblain",
-        "travel": (1320, 9800, ""),
+        # Estimation approchée : l'adresse exacte n'a pas été trouvée, le
+        # calcul est parti du centre de la commune et doit le dire.
+        "travel": (1320, 9800, "", True),
         "guests": 12, "formula": "reception",
         "message": "Cocktail dînatoire pour un départ en retraite.",
         "mail": ("sent", "sent", ""),
@@ -335,15 +337,17 @@ def _has_real_bookings(conn) -> bool:
 
 
 def _travel_columns(spec, now: str) -> tuple:
-    """(secondes, mètres, erreur, calculé_le) pour la colonne de trajet.
+    """(secondes, mètres, erreur, libellé, approché, calculé_le).
 
     `None` veut dire « jamais demandé » — pas « échoué » : le back-office doit
     proposer le bouton plutôt qu'afficher un échec qui n'a pas eu lieu.
     """
     if spec is None:
-        return (None, None, "", None)
-    seconds, meters, error = spec
-    return (seconds, meters, error, now)
+        return (None, None, "", "", 0, None)
+    seconds, meters, error = spec[:3]
+    approximate = spec[3] if len(spec) > 3 else False
+    label = "" if error else "adresse reconnue par le géocodeur"
+    return (seconds, meters, error, label, int(approximate), now)
 
 
 def _insert(conn) -> None:
@@ -381,9 +385,9 @@ def _insert(conn) -> None:
             """INSERT INTO bookings (ref, slot_id, name, email, phone, address, city, guests,
                                      formula, formula_id, message, status, created_at,
                                      cancelled_at, mail_client, mail_chef, mail_error,
-                                     travel_seconds, travel_meters, travel_error, travel_at,
-                                     demo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                                     travel_seconds, travel_meters, travel_error,
+                                     travel_label, travel_approx, travel_at, demo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (spec["ref"], slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
              spec["address"], spec.get("city", ""), spec["guests"],
              formula_names.get(slug, "") if slug else "",

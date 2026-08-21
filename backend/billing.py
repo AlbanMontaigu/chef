@@ -298,6 +298,8 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         # second appel ferait clignoter le lien après coup.
         "chef_address": settings.chef_address(),
         "client_address": full_address(booking),
+        "address": booking.get("address") or "",
+        "city": booking.get("city") or "",
         "travel": travel_view(booking),
         "estimate_cents": estimate,
         "paid_cents": paid,
@@ -320,6 +322,7 @@ def travel_view(booking: dict) -> dict:
                if booking.get("travel_meters") else None),
         "error": booking.get("travel_error") or "",
         "label_seen": booking.get("travel_label") or "",
+        "approximate": bool(booking.get("travel_approx")),
         "computed_at": booking.get("travel_at"),
     }
 

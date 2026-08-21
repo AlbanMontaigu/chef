@@ -160,7 +160,10 @@ flowchart TD
     B[Bouton « Estimer le trajet »<br/>back-office uniquement] --> V{Ville renseignée ?}
     V -- non --> R1[Refus, sans appel réseau]
     V -- oui --> G[Géocodage Nominatim<br/>mis en cache dans geocache]
-    G -- introuvable --> R2[Refus : adresse non localisée]
+    G -- introuvable --> F{Commune connue ?}
+    F -- non --> R2[Refus : adresse non localisée]
+    F -- oui --> GC[Géocodage de la commune seule<br/>résultat marqué « approché »]
+    GC --> O
     G -- trouvée --> O[Routage OSRM]
     O -- service KO --> R3[Refus : service injoignable]
     O -- itinéraire --> D{Distance plausible ?}
@@ -187,6 +190,20 @@ crédible est pire que pas de durée du tout. D'où :
 
 L'adresse reconnue est d'ailleurs affichée à côté de toute estimation acceptée,
 pour la même raison.
+
+### Le repli sur la commune
+
+Une adresse exacte manque souvent au cadastre : lieu-dit, salle des fêtes,
+numéro absent. La **commune**, elle, est presque toujours reconnue. Quand
+l'adresse échoue mais que le code postal et la ville sont là, l'estimation part
+donc du **centre de la commune** et le résultat est marqué `approximate` : le
+back-office l'affiche « ≈ 12 min » avec la mention « adresse exacte
+introuvable ».
+
+C'est la seule forme d'approximation autorisée ici, et elle ne l'est que parce
+qu'elle est annoncée. Une estimation approchée présentée comme telle reste
+utile — le chef veut savoir si c'est 15 ou 50 minutes. La même présentée comme
+exacte serait un mensonge, ce que le reste de ce module s'emploie à éviter.
 
 Le résultat est conservé sur la réservation : la politique d'usage de ces
 services demande de mettre les réponses en cache plutôt que de les redemander,

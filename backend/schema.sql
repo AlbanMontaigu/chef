@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS bookings (
     -- Adresse telle que le géocodeur l'a comprise. Affichée au chef : c'est le
     -- seul moyen qu'il repère qu'une adresse approximative a été mal placée.
     travel_label   TEXT NOT NULL DEFAULT '',
+    -- 1 = estimé depuis le centre de la commune, l'adresse exacte étant
+    -- introuvable. Affiché comme tel, jamais confondu avec une estimation
+    -- porte-à-porte.
+    travel_approx  INTEGER NOT NULL DEFAULT 0,
     travel_at      TEXT
 );
 

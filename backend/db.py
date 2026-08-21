@@ -40,6 +40,7 @@ _ADDED_COLUMNS = (
     ("bookings", "travel_meters", "INTEGER"),
     ("bookings", "travel_error", "TEXT NOT NULL DEFAULT ''"),
     ("bookings", "travel_label", "TEXT NOT NULL DEFAULT ''"),
+    ("bookings", "travel_approx", "INTEGER NOT NULL DEFAULT 0"),
     ("bookings", "travel_at", "TEXT"),
 )
 

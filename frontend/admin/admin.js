@@ -406,6 +406,20 @@ app.addEventListener('submit', async (event) => {
     return;
   }
 
+  if (event.target.id === 'address-form') {
+    event.preventDefault();
+    const form = event.target;
+    act(async () => {
+      await api.updateAddress(Number(form.dataset.booking), {
+        address: form.elements.address.value,
+        city: form.elements.city.value,
+      });
+      billing.editingAddress = false;
+      return "Adresse corrigée. L'estimation de trajet a été effacée : relancez-la.";
+    });
+    return;
+  }
+
   if (event.target.id === 'settings-form') {
     event.preventDefault();
     const address = event.target.elements.chef_address.value;
@@ -628,6 +642,10 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const addressEdit = event.target.closest('[data-address-edit]');
+  if (addressEdit) { billing.editingAddress = true; view.flash = ''; render(); return; }
+  if (event.target.closest('[data-address-cancel]')) { billing.editingAddress = false; render(); return; }
+
   const travelBtn = event.target.closest('[data-travel]');
   if (travelBtn) {
     act(async () => {
@@ -635,8 +653,10 @@ app.addEventListener('click', (event) => {
       // Le motif d'échec est rendu tel quel : le chef doit pouvoir distinguer
       // « adresse incomplète », qu'il peut corriger, de « service
       // injoignable », où il n'y a qu'à réessayer.
-      return r.error ? `Trajet non estimé : ${r.error}`
-                     : `Trajet estimé : ${r.label}${r.km ? `, ${r.km} km` : ''} en voiture, sans trafic.`;
+      if (r.error) return `Trajet non estimé : ${r.error}`;
+      return r.approximate
+        ? `Trajet approximatif : ≈ ${r.label}${r.km ? `, ${r.km} km` : ''} — adresse exacte introuvable, estimé depuis le centre de la commune.`
+        : `Trajet estimé : ${r.label}${r.km ? `, ${r.km} km` : ''} en voiture, sans trafic.`;
     });
     return;
   }

@@ -538,3 +538,12 @@ body.admin { background: var(--paper); color: var(--ink); }
 .travel { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
           margin: 0.5rem 0 0; font-size: 0.92rem; }
 .travel.muted { color: var(--ink-soft); }
+
+/* Correction d'adresse : deux champs sur une ligne, qui se replient sur
+   téléphone comme le reste des formulaires du back-office. */
+.address-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
+                margin-top: 0.6rem; }
+.address-form input {
+  padding: 0.5rem 0.65rem; font: inherit; border: 1px solid var(--line);
+  border-radius: var(--r-sm); background: #fff; color: var(--ink); flex: 1 1 12rem; min-width: 0;
+}

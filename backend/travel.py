@@ -138,12 +138,21 @@ def _now() -> str:
     return datetime.now(config.TZ).isoformat(timespec="seconds")
 
 
-def estimate(origin: str, destination: str) -> dict:
+def estimate(origin: str, destination: str, fallback: str = "") -> dict:
     """Estimation complète. Ne lève jamais : l'erreur est une donnée.
 
-    Renvoie `{seconds, meters, error, origin_label, destination_label}`.
+    `fallback` est la commune seule. Quand l'adresse exacte est introuvable —
+    numéro absent du cadastre, nom de lieu-dit, salle des fêtes — la commune,
+    elle, l'est presque toujours. On estime alors **depuis son centre**, et le
+    résultat est marqué `approximate` : le back-office l'annonce comme tel.
+    Une estimation approximative annoncée comme approximative reste utile ; la
+    même annoncée comme exacte serait un mensonge.
+
+    Renvoie `{seconds, meters, error, approximate, origin_label,
+    destination_label}`.
     """
-    blank = {"seconds": None, "meters": None, "origin_label": "", "destination_label": ""}
+    blank = {"seconds": None, "meters": None, "origin_label": "",
+             "destination_label": "", "approximate": False}
     if not origin:
         return {**blank, "error": "aucune adresse de départ (à renseigner dans Réglages)"}
     if not destination:
@@ -152,7 +161,11 @@ def estimate(origin: str, destination: str) -> dict:
     start, start_label, error = geocode(origin)
     if error:
         return {**blank, "error": f"adresse de départ : {error}"}
+    approximate = False
     end, end_label, error = geocode(destination)
+    if error and fallback and error == "adresse non localisée":
+        end, end_label, error = geocode(fallback)
+        approximate = end is not None
     if error:
         return {**blank, "origin_label": start_label,
                 "error": f"adresse du repas : {error}"}
@@ -173,8 +186,9 @@ def estimate(origin: str, destination: str) -> dict:
                 "error": f"distance invraisemblable ({km:.0f} km) — l'adresse a été "
                          f"localisée ici : {end_label[:120]}"}
 
-    log.info("trajet estimé : %s -> %s = %d s, %d m", origin, destination, seconds, meters)
-    return {"seconds": seconds, "meters": meters, "error": "",
+    log.info("trajet estimé%s : %s -> %s = %d s, %d m",
+             " (approché)" if approximate else "", origin, destination, seconds, meters)
+    return {"seconds": seconds, "meters": meters, "error": "", "approximate": approximate,
             "origin_label": start_label, "destination_label": end_label}
 
 

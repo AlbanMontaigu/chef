@@ -27,6 +27,7 @@ export const api = {
   deletePayment: (id) => request(`/api/admin/payments/${id}`, { method: 'DELETE' }),
   createInvoice: (bookingId) => request(`/api/admin/bookings/${bookingId}/invoice`, { method: 'POST' }),
   updateInvoice: (id, body) => request(`/api/admin/invoices/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateAddress: (id, body) => request(`/api/admin/bookings/${id}/address`, { method: 'PATCH', body: JSON.stringify(body) }),
   issueInvoice: (id) => request(`/api/admin/invoices/${id}/issue`, { method: 'POST' }),
   cancelInvoice: (id, reason) => request(`/api/admin/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   sendInvoice: (id) => request(`/api/admin/invoices/${id}/send`, { method: 'POST' }),
@@ -42,7 +43,8 @@ export function travelBadge(b, chefAddress) {
   const link = itinerary(chefAddress, dest, 'Trajet');
   if (b.travel_seconds) {
     const km = b.travel_meters ? ` · ${(b.travel_meters / 1000).toFixed(1)} km` : '';
-    return `<span class="badge ok">${escapeHtml(formatDuration(b.travel_seconds))}${escapeHtml(km)}</span>${link}`;
+    const approx = b.travel_approx ? '≈ ' : '';
+    return `<span class="badge ${b.travel_approx ? 'warn' : 'ok'}"${b.travel_approx ? ' title="Estimé depuis le centre de la commune : adresse exacte introuvable."' : ''}>${escapeHtml(approx + formatDuration(b.travel_seconds))}${escapeHtml(km)}</span>${link}`;
   }
   if (b.travel_error) {
     return `<span class="badge warn" title="${escapeHtml(b.travel_error)}">trajet non estimé</span>${link}`;
@@ -70,6 +72,7 @@ export const billing = {
   folder: null,        // {booking, data} — le dossier ouvert
   editingFormula: null, // id, ou 'new', ou null
   settings: { chef_address: '' },
+  editingAddress: false,
 };
 
 /* Lien d'itinéraire vers l'application de cartes, pas un calcul embarqué : la
@@ -295,12 +298,33 @@ function paymentsBlock(booking, data) {
 
 /* Dire pourquoi le lien manque plutôt que de ne rien afficher : sans cela, un
    chef qui n'a pas renseigné son adresse de départ croit la fonction absente. */
+function addressForm(booking, data) {
+  return `
+    <form class="address-form" id="address-form" data-booking="${booking.id}">
+      <input name="address" value="${escapeHtml(data.address ?? booking.address ?? '')}" maxlength="300"
+             placeholder="12 rue de l'Église" aria-label="Rue">
+      <input name="city" value="${escapeHtml(data.city ?? booking.city ?? '')}" maxlength="120"
+             placeholder="44000 Nantes" aria-label="Code postal et ville">
+      <button class="btn primary" type="submit">Enregistrer</button>
+      <button class="btn" type="button" data-address-cancel="1">Annuler</button>
+      <p class="hint" style="flex:1 1 100%;margin:0">Corriger l'adresse efface l'estimation de
+        trajet, qui décrivait l'ancienne. Une facture déjà émise garde l'adresse avec laquelle
+        elle est partie.</p>
+    </form>`;
+}
+
 function travelLine(booking, data) {
+  if (billing.editingAddress) return addressForm(booking, data);
   const from = data.chef_address;
   const to = data.client_address || booking.address;
-  if (!to) return '<p class="travel muted">Aucune adresse de repas : le client ne l\'a pas renseignée.</p>';
+  // Le bouton de correction existe dans TOUS les cas, y compris quand il n'y a
+  // pas d'adresse du tout : c'est justement là qu'il sert le plus.
+  const edit = `<button class="btn" data-address-edit="${booking.id}">Corriger l'adresse</button>`;
+  if (!to) {
+    return `<p class="travel muted">Aucune adresse de repas : le client ne l\'a pas renseignée. ${edit}</p>`;
+  }
   if (!from) {
-    return `<p class="travel muted">${escapeHtml(to)} — renseigne ton adresse de départ dans Réglages pour estimer le trajet.</p>`;
+    return `<p class="travel muted">${escapeHtml(to)} — renseigne ton adresse de départ dans Réglages pour estimer le trajet. ${edit}</p>`;
   }
   const t = data.travel ?? {};
   const link = itinerary(from, to);
@@ -311,8 +335,15 @@ function travelLine(booking, data) {
     // sans elle, une localisation de travers passe inaperçue.
     const seen = t.label_seen
       ? `<span class="hint" style="margin:0">localisé : ${escapeHtml(t.label_seen)}</span>` : '';
-    state = `<span class="badge ok">${escapeHtml(t.label)}${t.km ? escapeHtml(` · ${t.km} km`) : ''}</span>
-             <span class="hint" style="margin:0">estimation en voiture, sans trafic</span>${seen}`;
+    // Le « ≈ » et le libellé disent qu'on n'a pas trouvé le numéro exact et
+    // qu'on est parti du centre de la commune. Sans cette mention, le chef
+    // lirait une précision qui n'existe pas.
+    const prefix = t.approximate ? '≈ ' : '';
+    const how = t.approximate
+      ? "approximatif : adresse exacte introuvable, estimé depuis le centre de la commune"
+      : 'estimation en voiture, sans trafic';
+    state = `<span class="badge ${t.approximate ? 'warn' : 'ok'}">${escapeHtml(prefix + t.label)}${t.km ? escapeHtml(` · ${t.km} km`) : ''}</span>
+             <span class="hint" style="margin:0">${escapeHtml(how)}</span>${seen}`;
   } else if (t.error) {
     state = `<span class="badge warn">trajet non estimé</span>
              <span class="hint" style="margin:0">${escapeHtml(t.error)}</span>`;
@@ -320,7 +351,7 @@ function travelLine(booking, data) {
     state = '';
   }
   const action = `<button class="btn" data-travel="${booking.id}">${t.seconds || t.error ? 'Recalculer' : 'Estimer le trajet'}</button>`;
-  return `<p class="travel">${escapeHtml(to)} ${state} ${action} ${link}</p>`;
+  return `<p class="travel">${escapeHtml(to)} ${state} ${action} ${link} ${edit}</p>`;
 }
 
 export function settingsPanel() {

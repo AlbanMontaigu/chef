@@ -414,6 +414,40 @@ def list_invoices(status: str = "all", limit: int = 200) -> dict:
     return {"invoices": invoices, "outstanding_cents": outstanding}
 
 
+# --- Adresse d'une réservation -----------------------------------------
+
+class AddressIn(BaseModel):
+    address: str = Field(default="", max_length=300)
+    city: str = Field(default="", max_length=120)
+
+
+@router.patch("/bookings/{booking_id}/address")
+def update_address(booking_id: int, payload: AddressIn) -> dict:
+    """Corrige l'adresse du repas.
+
+    Le client saisit ce qu'il veut dans un formulaire libre, et une adresse
+    incomplète condamne l'estimation de trajet à jamais. Le chef appelle,
+    demande la rue exacte, et la corrige ici.
+
+    Le changement **efface l'estimation conservée** : elle décrivait l'ancienne
+    adresse, la garder afficherait une durée qui ne correspond plus à rien. Une
+    facture déjà émise, elle, ne bouge pas — son adresse client a été recopiée
+    à l'émission et ne doit pas se réécrire après coup.
+    """
+    with db.transaction() as conn:
+        row = conn.execute("SELECT ref FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Réservation introuvable.")
+        conn.execute(
+            "UPDATE bookings SET address = ?, city = ?, travel_seconds = NULL,"
+            " travel_meters = NULL, travel_error = '', travel_label = '', travel_at = NULL"
+            " WHERE id = ?",
+            (payload.address.strip(), payload.city.strip(), booking_id),
+        )
+    log.info("adresse corrigée sur %s", row["ref"])
+    return {"updated": booking_id}
+
+
 # --- Trajet ------------------------------------------------------------
 
 @router.post("/bookings/{booking_id}/travel")
@@ -432,17 +466,19 @@ def compute_travel(booking_id: int) -> dict:
         # ambiguë dans toute la France, et le géocodeur tranchera au hasard
         # plutôt que d'échouer. Mieux vaut ne pas demander.
         result = {"seconds": None, "meters": None, "origin_label": "",
-                  "destination_label": "",
+                  "destination_label": "", "approximate": False,
                   "error": "code postal et ville manquants sur cette réservation — "
                            "sans eux, l'adresse ne peut pas être localisée de façon sûre"}
     else:
-        result = travel.estimate(settings.chef_address(), billing.full_address(booking))
+        result = travel.estimate(settings.chef_address(), billing.full_address(booking),
+                                 fallback=(booking.get("city") or "").strip())
     with db.transaction() as conn:
         conn.execute(
             "UPDATE bookings SET travel_seconds = ?, travel_meters = ?, travel_error = ?,"
-            " travel_label = ?, travel_at = ? WHERE id = ?",
+            " travel_label = ?, travel_approx = ?, travel_at = ? WHERE id = ?",
             (result["seconds"], result["meters"], result["error"][:300],
-             result["destination_label"][:200], billing.now_iso(), booking_id),
+             result["destination_label"][:200], int(result.get("approximate", False)),
+             billing.now_iso(), booking_id),
         )
     if result["error"]:
         log.info("trajet non estimé pour %s : %s", booking["ref"], result["error"])
