@@ -23,7 +23,10 @@ book one directly. Same shape as the `flip7` app it is modelled on: a
    rest — `sqlite3` for storage, `smtplib` for mail, `hmac` for the session
    cookie. No ORM, no mail SDK, no session library.
 3. **No external network calls from the page.** No analytics, no CDN, no web
-   font, no third-party API. Everything is served from the same origin.
+   font, no third-party API. Everything is served from the same origin. The
+   design therefore leans on system font stacks — that is a reliability
+   constraint, not an oversight, and adding a `@font-face` from a CDN to
+   "improve" the look would break it.
 4. **Single process, single container.** One FastAPI app serves `/api/*` and
    the static frontend — same origin, no CORS.
 5. **All user-facing strings stay in French**, formal `vous` on the public
@@ -52,6 +55,17 @@ book one directly. Same shape as the `flip7` app it is modelled on: a
 - **Cancelling is the only way to free a booked slot.** `DELETE /slots/{id}`
   refuses a booked slot on purpose: deleting it would cascade the booking away
   without telling the client. Cancel first — that mails them.
+
+## Two calendars, on purpose
+
+The visitor gets a **list of open dates** grouped by month; the chef gets a
+**month grid** with multi-select. They answer different questions ("when can
+I?" versus "which dates do I open?"), and a sparse month grid reads as an empty
+diary to a visitor. Don't unify them into one component.
+
+Bulk actions must report what they did *not* do — "4 ouverts, 2 l'étaient déjà",
+"3 fermés, 1 réservé laissé en place". A bulk action that silently absorbs the
+difference lets the chef believe a date is closed when it is not.
 
 ## Content lives in `content/site.json`
 

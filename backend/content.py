@@ -16,6 +16,8 @@ log = logging.getLogger("chef.content")
 _FALLBACK = {
     "name": "Chef à domicile",
     "tagline": "",
+    "hero_photo": "",
+    "portrait": "",
     "sections": [],
     "formulas": [],
     "gallery": [],

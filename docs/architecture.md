@@ -79,10 +79,26 @@ réservation sans prévenir personne. Il faut annuler d'abord.
 - `js/state.js` — l'unique objet mutable.
 - `js/api.js` — `fetch` + normalisation des erreurs FastAPI en message lisible.
 - `js/views/site.js` — la partie éditoriale, rendue une fois au chargement.
-- `js/views/booking.js` — calendrier, choix du service, formulaire,
+- `js/views/booking.js` — liste des dates, choix du service, formulaire,
   confirmation. C'est le seul bloc re-rendu, pour ne pas vider un formulaire
   en cours de saisie.
 - `admin/admin.js` — le back-office, avec son propre état et sa propre page.
+
+### Pourquoi une liste de dates côté client, un calendrier côté chef
+
+Les deux vues répondent à deux questions différentes. Le visiteur demande
+« quand puis-je ? » : il voit donc **la liste des dates ouvertes**, groupées par
+mois. Une grille mensuelle où trois cases sur trente sont actives donne
+l'impression d'un agenda désert, alors que quatre cartes lisibles donnent envie
+de cliquer — et sur téléphone, une carte est une cible bien plus large qu'une
+case de calendrier.
+
+Le chef, lui, demande « quelles dates est-ce que j'ouvre ? » : c'est une
+question de mois, donc **un calendrier**, avec sélection multiple. Cocher un
+week-end entier puis « Ouvrir le dîner » vaut mieux que deux allers-retours par
+date. Les jours passés ne sont pas cliquables, et l'ouverture rend compte de ce
+qu'elle n'a pas fait (« 4 ouverts, 2 l'étaient déjà ») plutôt que d'absorber la
+différence en silence.
 
 `js/util.js` manipule les dates comme des chaînes `YYYY-MM-DD` de bout en
 bout : les convertir en `Date` invite un décalage de fuseau qui déplacerait

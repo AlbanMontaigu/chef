@@ -1,5 +1,6 @@
 import { request } from '../js/api.js';
-import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex, SERVICE_LABEL } from '../js/util.js';
+import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
+         todayISO, SERVICE_LABEL } from '../js/util.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -12,9 +13,10 @@ const view = {
   month: null,
   slots: [],
   bookings: [],
-  selectedDate: null,
   firstBookable: null,
+  picked: new Set(),   // dates cochées dans le calendrier
   error: '',
+  flash: '',
   busy: false,
 };
 
@@ -30,144 +32,197 @@ const api = {
   resend: (id) => request(`/api/admin/bookings/${id}/resend`, { method: 'POST' }),
 };
 
-function monthBounds() {
+const monthBounds = () => {
   const { year, month } = view.month;
   return [isoOf(year, month, 1), isoOf(year, month, daysInMonth(year, month))];
-}
+};
+const slotAt = (date, service) => view.slots.find((s) => s.date === date && s.service === service) ?? null;
 
-function slotAt(date, service) {
-  return view.slots.find((s) => s.date === date && s.service === service) ?? null;
-}
-
-// --- Rendering ---------------------------------------------------------
+// --- Vues ---------------------------------------------------------------
 
 function loginView() {
   const warning = view.configured ? '' :
-    `<p class="error">ADMIN_PASSWORD n'est pas configuré côté serveur : le back-office est inutilisable tant que la variable n'est pas posée dans Coolify.</p>`;
+    `<p class="error">ADMIN_PASSWORD n'est pas configuré côté serveur : le back-office reste inutilisable tant que la variable n'est pas posée dans Coolify.</p>`;
   return `
-    <form class="admin-card admin-login" id="login-form">
-      <h1>Back-office</h1>
-      ${warning}
-      <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
-      ${view.error ? `<p class="error" role="alert">${escapeHtml(view.error)}</p>` : ''}
-      <button class="cta" type="submit" style="margin-top:1rem" ${view.busy ? 'disabled' : ''}>Entrer</button>
-    </form>`;
+    <div class="wrap">
+      <form class="panel admin-login" id="login-form">
+        <h1>Votre back-office</h1>
+        <p class="hint">Ouvrez vos dates, suivez vos réservations.</p>
+        ${warning}
+        <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+        ${view.error ? `<p class="error" role="alert" style="margin-top:0.75rem">${escapeHtml(view.error)}</p>` : ''}
+        <button class="cta" type="submit" style="margin-top:1.25rem;width:100%" ${view.busy ? 'disabled' : ''}>Entrer</button>
+      </form>
+    </div>`;
 }
 
-function calendarView() {
+function summary() {
+  const today = todayISO();
+  const upcoming = view.bookings.filter((b) => b.date >= today);
+  const covers = upcoming.reduce((n, b) => n + b.guests, 0);
+  const openFree = view.slots.filter((s) => !s.booking_id && s.date >= today).length;
+  const issues = view.bookings.filter((b) =>
+    [b.mail_client, b.mail_chef].some((s) => s === 'failed' || s === 'disabled')).length;
+  const cards = [
+    `<div class="stat"><b>${upcoming.length}</b><s>réservation${upcoming.length > 1 ? 's' : ''} à venir</s></div>`,
+    `<div class="stat"><b>${covers}</b><s>couverts à préparer</s></div>`,
+    `<div class="stat"><b>${openFree}</b><s>créneau${openFree > 1 ? 'x' : ''} libre${openFree > 1 ? 's' : ''} ce mois</s></div>`,
+    issues ? `<div class="stat alert"><b>${issues}</b><s>e-mail${issues > 1 ? 's' : ''} non parti${issues > 1 ? 's' : ''}</s></div>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="summary">${cards}</div>`;
+}
+
+function calendarPanel() {
   const { year, month } = view.month;
+  const today = todayISO();
   const total = daysInMonth(year, month);
   const offset = weekdayIndex(isoOf(year, month, 1));
+
   const cells = [];
   for (let i = 0; i < offset; i += 1) cells.push('<div class="day empty"></div>');
   for (let d = 1; d <= total; d += 1) {
     const iso = isoOf(year, month, d);
     const open = SERVICES.map((s) => slotAt(iso, s)).filter(Boolean);
     const booked = open.some((s) => s.booking_id);
+    if (iso < today) { cells.push(`<div class="day past"><span>${d}</span></div>`); continue; }
     const klass = booked ? 'day booked' : open.length ? 'day free' : 'day off';
+    const picked = view.picked.has(iso) ? ' picked' : '';
     const dots = open.map((s) => `<i class="dot ${escapeHtml(s.service)}"></i>`).join('');
-    const selected = view.selectedDate === iso ? ' selected' : '';
-    cells.push(`<button type="button" class="${klass}${selected}" data-date="${iso}">
-      <span>${d}</span><span class="dots">${dots}</span></button>`);
+    cells.push(`<button type="button" class="${klass}${picked}" data-date="${iso}"
+      aria-pressed="${view.picked.has(iso)}"><span>${d}</span><span class="dots">${dots}</span></button>`);
   }
+
   return `
-    <div class="calendar">
+    <div class="panel">
       <div class="cal-head">
-        <button type="button" class="nav" data-nav="-1">‹</button>
+        <button type="button" class="nav" data-nav="-1" aria-label="Mois précédent">‹</button>
         <strong>${escapeHtml(monthLabel(year, month))}</strong>
-        <button type="button" class="nav" data-nav="1">›</button>
+        <button type="button" class="nav" data-nav="1" aria-label="Mois suivant">›</button>
       </div>
       <div class="weekdays">${WEEKDAYS.map((d) => `<span>${d}</span>`).join('')}</div>
       <div class="grid">${cells.join('')}</div>
-      <p class="legend"><i class="dot midi"></i> déjeuner &nbsp; <i class="dot soir"></i> dîner &nbsp;— vert : ouvert · rouge : réservé</p>
+      <p class="legend">
+        <span><i class="is-free"></i>ouvert</span>
+        <span><i class="is-booked"></i>réservé</span>
+        <span><i class="dot midi" style="border-radius:50%"></i>déjeuner</span>
+        <span><i class="dot soir" style="border-radius:50%"></i>dîner</span>
+      </p>
+      ${selectionBar()}
+      <div class="selectbar" style="background:var(--paper-warm);border-color:var(--line)">
+        <p>Raccourcis</p>
+        <div class="actions">
+          <button class="btn" data-quick="weekends">Cocher tous les week-ends</button>
+          <button class="btn" data-quick="month">Cocher tout le mois</button>
+        </div>
+      </div>
     </div>`;
 }
 
-function dayPanel() {
-  if (!view.selectedDate) {
-    return `<div class="admin-card"><p class="hint" style="margin:0">Clique sur un jour du calendrier pour ouvrir ou fermer un créneau.</p></div>`;
+function selectionBar() {
+  const n = view.picked.size;
+  if (!n) {
+    return `<p class="hint" style="margin:1rem 0 0">Cochez un ou plusieurs jours, puis ouvrez le déjeuner, le dîner, ou les deux d'un seul geste.</p>`;
   }
-  const rows = SERVICES.map((service) => {
-    const slot = slotAt(view.selectedDate, service);
-    const label = SERVICE_LABEL[service];
-    if (!slot) {
-      return `<div class="toolbar"><strong>${label}</strong>
-        <button class="btn-small" data-open="${service}">Ouvrir</button></div>`;
-    }
-    if (slot.booking_id) {
-      return `<div class="toolbar"><strong>${label}</strong>
-        <span class="badge bad">Réservé — ${escapeHtml(slot.name)} (${escapeHtml(slot.guests)} couverts, ${escapeHtml(slot.ref)})</span>
-        <span class="hint">Annule depuis la liste ci-dessous pour libérer la date.</span></div>`;
-    }
-    // Open but inside the lead-in window: nobody can book it, say so.
-    const tooSoon = view.firstBookable && slot.date < view.firstBookable;
-    const badge = tooSoon
-      ? `<span class="badge warn">Ouvert mais trop proche — invisible sur le site</span>`
-      : `<span class="badge ok">Ouvert</span>`;
-    return `<div class="toolbar"><strong>${label}</strong>
-      ${badge}
-      <button class="btn-small" data-close="${slot.id}">Fermer</button></div>`;
-  }).join('');
-  return `<div class="admin-card">
-    <h2 class="day-title" style="margin-top:0">${escapeHtml(longDate(view.selectedDate))}</h2>
-    ${rows}
-  </div>`;
+  return `
+    <div class="selectbar">
+      <p>${n} jour${n > 1 ? 's' : ''} coché${n > 1 ? 's' : ''}</p>
+      <div class="actions">
+        <button class="btn primary" data-open="midi">Ouvrir le déjeuner</button>
+        <button class="btn primary" data-open="soir">Ouvrir le dîner</button>
+        <button class="btn primary" data-open="both">Les deux</button>
+        <button class="btn danger" data-close="1">Fermer</button>
+        <button class="btn" data-clear="1">Décocher</button>
+      </div>
+    </div>`;
 }
 
-function mailBadge(booking) {
-  const states = [booking.mail_client, booking.mail_chef];
+function slotsPanel() {
+  const today = todayISO();
+  const rows = view.slots
+    .filter((s) => s.date >= today)
+    .map((s) => {
+      const tooSoon = view.firstBookable && s.date < view.firstBookable;
+      let badge;
+      if (s.booking_id) badge = `<span class="badge bad">Réservé — ${escapeHtml(s.name)} (${escapeHtml(s.guests)} couverts)</span>`;
+      else if (tooSoon) badge = '<span class="badge warn">Trop proche — invisible sur le site</span>';
+      else badge = '<span class="badge ok">Visible et réservable</span>';
+      const close = s.booking_id ? '' : `<button class="btn danger" data-close-one="${s.id}">Fermer</button>`;
+      return `<div class="slot-row">
+        <strong>${escapeHtml(longDate(s.date))}</strong>
+        <span class="badge neutral">${escapeHtml(SERVICE_LABEL[s.service] ?? s.service)}</span>
+        ${badge}${close}
+      </div>`;
+    }).join('');
+  return `
+    <div class="panel">
+      <h2>Vos créneaux — ${escapeHtml(monthLabel(view.month.year, view.month.month))}</h2>
+      <p class="hint">Ce que voient vos clients, dans l'ordre.</p>
+      ${rows || '<p class="hint" style="margin:0">Aucun créneau ouvert sur ce mois.</p>'}
+    </div>`;
+}
+
+function mailBadge(b) {
+  const states = [b.mail_client, b.mail_chef];
   if (states.every((s) => s === 'sent')) return '<span class="badge ok">e-mails envoyés</span>';
   if (states.includes('failed')) {
-    // The two recipients usually fail for the same reason; showing it twice
-    // just makes the real message harder to read.
-    const reasons = [...new Set(booking.mail_error.split(' | ').filter(Boolean))];
-    return `<span class="badge bad">e-mail en échec</span> <span class="hint">${escapeHtml(reasons.join(' · '))}</span>`;
+    const reasons = [...new Set(b.mail_error.split(' | ').filter(Boolean))];
+    return `<span class="badge bad">e-mail en échec</span> <span class="hint" style="margin:0">${escapeHtml(reasons.join(' · '))}</span>`;
   }
   if (states.includes('disabled')) return '<span class="badge warn">envoi désactivé</span>';
-  return '<span class="badge warn">envoi en cours…</span>';
+  return '<span class="badge neutral">envoi en cours…</span>';
 }
 
-function bookingsView() {
-  if (!view.bookings.length) {
-    return `<div class="admin-card"><h2 style="margin-top:0">Réservations</h2><p class="hint">Aucune réservation active.</p></div>`;
+function bookingsPanel() {
+  const today = todayISO();
+  const upcoming = view.bookings.filter((b) => b.date >= today);
+  if (!upcoming.length) {
+    return `<div class="panel"><h2>Réservations à venir</h2>
+      <p class="hint" style="margin:0">Rien pour l'instant. Ouvrez des dates pour que vos clients puissent réserver.</p></div>`;
   }
-  const rows = view.bookings.map((b) => `
-    <div class="booking-row">
+  const cards = upcoming.map((b) => `
+    <div class="booking-card">
       <div class="when">${escapeHtml(longDate(b.date))} — ${escapeHtml(SERVICE_LABEL[b.service] ?? b.service)} · ${escapeHtml(b.guests)} couverts</div>
-      <div class="who">${escapeHtml(b.name)} · ${escapeHtml(b.email)} · ${escapeHtml(b.phone || '—')}</div>
-      <div class="meta">${escapeHtml(b.address || 'adresse non renseignée')} · ${escapeHtml(b.formula || 'formule à définir')} · réf. ${escapeHtml(b.ref)}</div>
-      ${b.message ? `<div class="meta">« ${escapeHtml(b.message)} »</div>` : ''}
-      <div class="toolbar" style="margin:0.4rem 0 0">
+      <p class="who"><strong>${escapeHtml(b.name)}</strong> · <a href="mailto:${escapeHtml(b.email)}">${escapeHtml(b.email)}</a>${b.phone ? ` · <a href="tel:${escapeHtml(b.phone.replace(/\s/g, ''))}">${escapeHtml(b.phone)}</a>` : ''}</p>
+      <p class="meta">${escapeHtml(b.address || 'adresse non renseignée')} · ${escapeHtml(b.formula || 'formule à définir')} · réf. ${escapeHtml(b.ref)}</p>
+      ${b.message ? `<p class="quote">« ${escapeHtml(b.message)} »</p>` : ''}
+      <div class="actions">
         ${mailBadge(b)}
-        <button class="btn-small" data-cancel="${b.id}">Annuler</button>
-        <button class="btn-small" data-resend="${b.id}">Renvoyer les e-mails</button>
+        <button class="btn danger" data-cancel="${b.id}">Annuler</button>
+        <button class="btn" data-resend="${b.id}">Renvoyer les e-mails</button>
       </div>
     </div>`).join('');
-  return `<div class="admin-card"><h2 style="margin-top:0">Réservations à venir</h2>${rows}</div>`;
+  return `<div class="panel"><h2>Réservations à venir</h2><p class="hint">${upcoming.length} au total.</p>${cards}</div>`;
 }
 
 function render() {
   if (!view.authenticated) { app.innerHTML = loginView(); return; }
   const mailWarn = view.mailEnabled ? '' :
-    `<div class="admin-card"><p class="error">SMTP_HOST n'est pas configuré : aucune confirmation ne part. Les réservations sont bien enregistrées, mais les clients ne reçoivent rien.</p></div>`;
+    `<div class="panel" style="border-color:#e8c0b5;background:#fdf1ed;margin-bottom:1.5rem">
+       <p class="error" style="margin:0">L'envoi d'e-mails est désactivé côté serveur (SMTP_HOST). Les réservations sont bien enregistrées, mais personne ne reçoit de confirmation.</p>
+     </div>`;
   app.innerHTML = `
     <div class="admin-head">
-      <h1>Back-office</h1>
-      <div class="toolbar" style="margin:0">
-        <a href="/" class="btn-small" style="text-decoration:none">Voir le site</a>
-        <button class="btn-small" data-logout="1">Déconnexion</button>
+      <div class="wrap">
+        <h1>Votre back-office</h1>
+        <div class="tools">
+          <a href="/" class="btn">Voir le site</a>
+          <button class="btn" data-logout="1">Déconnexion</button>
+        </div>
       </div>
     </div>
-    ${view.error ? `<div class="admin-card"><p class="error" role="alert">${escapeHtml(view.error)}</p></div>` : ''}
-    ${mailWarn}
-    <div class="admin-split">
-      <div class="admin-card">${calendarView()}</div>
-      ${dayPanel()}
-    </div>
-    ${bookingsView()}`;
+    <div class="admin-body"><div class="wrap">
+      ${view.flash ? `<div class="panel" style="margin-bottom:1.5rem;border-color:#cfdab8;background:var(--olive-soft)"><p style="margin:0;font-weight:600">${escapeHtml(view.flash)}</p></div>` : ''}
+      ${view.error ? `<div class="panel" style="margin-bottom:1.5rem"><p class="error" style="margin:0" role="alert">${escapeHtml(view.error)}</p></div>` : ''}
+      ${mailWarn}
+      ${summary()}
+      <div class="admin-split">
+        <div>${calendarPanel()}</div>
+        <div>${bookingsPanel()}${slotsPanel()}</div>
+      </div>
+    </div></div>`;
 }
 
-// --- Data --------------------------------------------------------------
+// --- Données ------------------------------------------------------------
 
 async function refresh() {
   const [start, end] = monthBounds();
@@ -178,8 +233,8 @@ async function refresh() {
     view.bookings = bookings.bookings;
     view.error = '';
   } catch (err) {
-    if (err.status === 401) { view.authenticated = false; view.error = err.message; }
-    else view.error = err.message;
+    if (err.status === 401) view.authenticated = false;
+    view.error = err.message;
   }
   render();
 }
@@ -187,10 +242,11 @@ async function refresh() {
 async function act(fn) {
   view.busy = true;
   try {
-    await fn();
+    view.flash = (await fn()) ?? '';
     view.error = '';
   } catch (err) {
     view.error = err.message;
+    view.flash = '';
     if (err.status === 401) view.authenticated = false;
   } finally {
     view.busy = false;
@@ -198,7 +254,37 @@ async function act(fn) {
   await refresh();
 }
 
-// --- Events ------------------------------------------------------------
+function pickedDates() {
+  return [...view.picked].sort();
+}
+
+async function openPicked(which) {
+  const services = which === 'both' ? SERVICES : [which];
+  const items = pickedDates().flatMap((date) => services.map((service) => ({ date, service, note: '' })));
+  const res = await api.openSlots(items);
+  view.picked.clear();
+  const already = res.requested - res.created;
+  // Ne jamais laisser croire qu'on a fait plus que fait : les créneaux déjà
+  // ouverts sont comptés à part, pas silencieusement absorbés.
+  return already
+    ? `${res.created} créneau(x) ouvert(s), ${already} l'étaient déjà.`
+    : `${res.created} créneau(x) ouvert(s).`;
+}
+
+async function closePicked() {
+  const dates = new Set(pickedDates());
+  const target = view.slots.filter((s) => dates.has(s.date));
+  const closable = target.filter((s) => !s.booking_id);
+  const booked = target.length - closable.length;
+  for (const slot of closable) await api.closeSlot(slot.id);
+  view.picked.clear();
+  if (!target.length) return 'Aucun créneau ouvert sur les jours cochés.';
+  return booked
+    ? `${closable.length} créneau(x) fermé(s). ${booked} réservé(s) laissé(s) en place — annulez la réservation pour les libérer.`
+    : `${closable.length} créneau(x) fermé(s).`;
+}
+
+// --- Événements ---------------------------------------------------------
 
 app.addEventListener('submit', async (event) => {
   if (event.target.id !== 'login-form') return;
@@ -225,36 +311,66 @@ app.addEventListener('click', (event) => {
     if (month < 1) { month = 12; year -= 1; }
     if (month > 12) { month = 1; year += 1; }
     view.month = { year, month };
-    view.selectedDate = null;
+    view.picked.clear();
+    view.flash = '';
     refresh();
     return;
   }
+
   const day = event.target.closest('[data-date]');
   if (day) {
-    view.selectedDate = view.selectedDate === day.dataset.date ? null : day.dataset.date;
+    const iso = day.dataset.date;
+    if (view.picked.has(iso)) view.picked.delete(iso); else view.picked.add(iso);
+    view.flash = '';
     render();
     return;
   }
-  const open = event.target.closest('[data-open]');
-  if (open) {
-    act(() => api.openSlots([{ date: view.selectedDate, service: open.dataset.open, note: '' }]));
+
+  const quick = event.target.closest('[data-quick]');
+  if (quick) {
+    const { year, month } = view.month;
+    const today = todayISO();
+    for (let d = 1; d <= daysInMonth(year, month); d += 1) {
+      const iso = isoOf(year, month, d);
+      if (iso < today) continue;
+      if (quick.dataset.quick === 'month' || weekdayIndex(iso) >= 5) view.picked.add(iso);
+    }
+    render();
     return;
   }
-  const close = event.target.closest('[data-close]');
-  if (close) { act(() => api.closeSlot(Number(close.dataset.close))); return; }
+
+  if (event.target.closest('[data-clear]')) { view.picked.clear(); render(); return; }
+
+  const open = event.target.closest('[data-open]');
+  if (open) { act(() => openPicked(open.dataset.open)); return; }
+
+  if (event.target.closest('[data-close]')) { act(closePicked); return; }
+
+  const closeOne = event.target.closest('[data-close-one]');
+  if (closeOne) {
+    act(async () => { await api.closeSlot(Number(closeOne.dataset.closeOne)); return 'Créneau fermé.'; });
+    return;
+  }
 
   const cancel = event.target.closest('[data-cancel]');
   if (cancel) {
-    const reason = prompt('Annuler cette réservation ? Le client sera prévenu par e-mail.\nMotif (facultatif, repris dans l\'e-mail) :');
+    const reason = prompt("Annuler cette réservation ? Le client sera prévenu par e-mail.\nMotif (facultatif, repris dans l'e-mail) :");
     if (reason === null) return;
-    act(() => api.cancel(Number(cancel.dataset.cancel), reason));
+    act(async () => {
+      const r = await api.cancel(Number(cancel.dataset.cancel), reason);
+      return `Réservation ${r.cancelled} annulée, le client est prévenu et la date est de nouveau libre.`;
+    });
     return;
   }
+
   const resend = event.target.closest('[data-resend]');
-  if (resend) { act(() => api.resend(Number(resend.dataset.resend))); return; }
+  if (resend) {
+    act(async () => { await api.resend(Number(resend.dataset.resend)); return 'E-mails relancés.'; });
+    return;
+  }
 
   if (event.target.closest('[data-logout]')) {
-    act(async () => { await api.logout(); view.authenticated = false; });
+    act(async () => { await api.logout(); view.authenticated = false; return ''; });
   }
 });
 
@@ -266,7 +382,7 @@ async function start() {
     view.authenticated = session.authenticated;
     view.configured = session.configured;
     view.mailEnabled = session.mail_enabled;
-  } catch { /* fall through to the login screen */ }
+  } catch { /* on retombe sur l'écran de connexion */ }
   if (view.authenticated) await refresh();
   else render();
 }

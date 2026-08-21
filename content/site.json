@@ -1,12 +1,10 @@
 {
-  "_comment": "TOUT LE CONTENU DU SITE EST ICI. Les valeurs ci-dessous sont des PLACEHOLDERS a remplacer par les vraies infos du chef. Editer ce fichier + push = site a jour, aucun code a toucher.",
-
+  "_comment": "TOUT LE CONTENU DU SITE EST ICI. Les valeurs PLACEHOLDER sont a remplacer par les vraies infos du chef. Editer ce fichier + push = site a jour, aucun code a toucher. hero_photo et portrait attendent un chemin comme /img/plat.jpg (photos dans frontend/img/) ; laisses vides, un disque colore tient la place.",
   "name": "Chef à domicile",
   "tagline": "Un vrai repas de chef, chez vous, sans rien avoir à faire.",
+  "hero_photo": "",
   "intro": "Je viens cuisiner chez vous : marché, préparation, service et vaisselle comprise. Vous n'avez qu'à mettre la table.",
-
   "area": "PLACEHOLDER — zone d'intervention (ex. « Nantes et 30 km alentour »)",
-
   "sections": [
     {
       "title": "Comment ça se passe",
@@ -18,7 +16,6 @@
       ]
     }
   ],
-
   "formulas": [
     {
       "id": "decouverte",
@@ -42,17 +39,14 @@
       "min_guests": 15
     }
   ],
-
   "about": "PLACEHOLDER — le parcours du chef, en quelques phrases à la première personne. C'est le bloc qui donne envie de réserver : où il a travaillé, ce qu'il aime cuisiner, pourquoi il fait ça.",
-
+  "portrait": "",
   "gallery": [],
-
   "contact": {
     "email": "",
     "phone": "",
     "instagram": ""
   },
-
   "booking": {
     "min_guests": 2,
     "max_guests": 20,
@@ -60,7 +54,6 @@
     "horizon_days": 180,
     "notice": "La réservation bloque la date. Je vous recontacte sous 48 h pour le menu."
   },
-
   "legal": {
     "siret": "",
     "status": "PLACEHOLDER — statut (ex. micro-entreprise)"

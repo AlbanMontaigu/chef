@@ -1,6 +1,6 @@
-// Every user-supplied string interpolated into HTML goes through escapeHtml.
-// Names, messages and addresses are free text and are rendered in the
-// back-office -- never interpolate one raw.
+// Toute chaîne fournie par un visiteur et interpolée dans du HTML passe par
+// escapeHtml. Noms, adresses et messages sont du texte libre et sont réaffichés
+// dans le back-office — ne jamais en interpoler un brut.
 export function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -11,13 +11,16 @@ export function escapeHtml(value) {
 }
 
 const DAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const DAYS_SHORT = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
   'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.',
+  'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
 export const SERVICE_LABEL = { midi: 'Déjeuner', soir: 'Dîner' };
 
-// Dates are handled as plain YYYY-MM-DD strings throughout. Parsing them into
-// Date objects invites a timezone shift that moves a booking by a day.
+// Les dates circulent en chaînes YYYY-MM-DD de bout en bout. Les convertir en
+// Date invite un décalage de fuseau qui déplacerait une réservation d'un jour.
 export function parseISO(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
@@ -32,9 +35,17 @@ export function longDate(iso) {
   return `${DAYS[weekdayIndex(iso)]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-export function monthLabel(year, month) {
-  return `${MONTHS[month - 1]} ${year}`;
+export function shortWeekday(iso) { return DAYS_SHORT[weekdayIndex(iso)]; }
+export function weekdayName(iso) { return DAYS[weekdayIndex(iso)]; }
+export function dayNumber(iso) { return parseISO(iso).getUTCDate(); }
+export function shortMonth(iso) { return MONTHS_SHORT[parseISO(iso).getUTCMonth()]; }
+
+export function monthKey(iso) { return iso.slice(0, 7); }
+export function monthLabelFromKey(key) {
+  const [y, m] = key.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${y}`;
 }
+export function monthLabel(year, month) { return `${MONTHS[month - 1]} ${year}`; }
 
 export function isoOf(year, month, day) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -42,4 +53,11 @@ export function isoOf(year, month, day) {
 
 export function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export function todayISO() {
+  // L'horloge du navigateur, suffisante pour griser le passé dans le
+  // back-office ; le serveur reste seul juge de ce qui est réservable.
+  const n = new Date();
+  return isoOf(n.getFullYear(), n.getMonth() + 1, n.getDate());
 }
