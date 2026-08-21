@@ -1,0 +1,8 @@
+.git
+.gitignore
+docs
+backend/data
+__pycache__
+**/__pycache__
+*.pyc
+.DS_Store

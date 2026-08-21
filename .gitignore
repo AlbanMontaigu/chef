@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+backend/data/
+frontend/build.txt
+.env
+.DS_Store

@@ -1,0 +1,68 @@
+{
+  "_comment": "TOUT LE CONTENU DU SITE EST ICI. Les valeurs ci-dessous sont des PLACEHOLDERS a remplacer par les vraies infos du chef. Editer ce fichier + push = site a jour, aucun code a toucher.",
+
+  "name": "Chef à domicile",
+  "tagline": "Un vrai repas de chef, chez vous, sans rien avoir à faire.",
+  "intro": "Je viens cuisiner chez vous : marché, préparation, service et vaisselle comprise. Vous n'avez qu'à mettre la table.",
+
+  "area": "PLACEHOLDER — zone d'intervention (ex. « Nantes et 30 km alentour »)",
+
+  "sections": [
+    {
+      "title": "Comment ça se passe",
+      "steps": [
+        "Vous choisissez une date disponible sur le calendrier ci-dessous.",
+        "Nous calons ensemble le menu, selon la saison, vos goûts et vos allergies.",
+        "J'arrive avec les courses et le matériel, je cuisine, je sers.",
+        "Je repars, la cuisine propre."
+      ]
+    }
+  ],
+
+  "formulas": [
+    {
+      "id": "decouverte",
+      "name": "PLACEHOLDER — Formule découverte",
+      "description": "Entrée, plat, dessert. Produits de saison.",
+      "price": "à partir de XX € / personne",
+      "min_guests": 4
+    },
+    {
+      "id": "signature",
+      "name": "PLACEHOLDER — Menu signature",
+      "description": "Cinq services, accords possibles.",
+      "price": "à partir de XX € / personne",
+      "min_guests": 6
+    },
+    {
+      "id": "reception",
+      "name": "PLACEHOLDER — Réception",
+      "description": "Buffet ou cocktail dînatoire pour un plus grand nombre.",
+      "price": "sur devis",
+      "min_guests": 15
+    }
+  ],
+
+  "about": "PLACEHOLDER — le parcours du chef, en quelques phrases à la première personne. C'est le bloc qui donne envie de réserver : où il a travaillé, ce qu'il aime cuisiner, pourquoi il fait ça.",
+
+  "gallery": [],
+
+  "contact": {
+    "email": "",
+    "phone": "",
+    "instagram": ""
+  },
+
+  "booking": {
+    "min_guests": 2,
+    "max_guests": 20,
+    "lead_days": 5,
+    "horizon_days": 180,
+    "notice": "La réservation bloque la date. Je vous recontacte sous 48 h pour le menu."
+  },
+
+  "legal": {
+    "siret": "",
+    "status": "PLACEHOLDER — statut (ex. micro-entreprise)"
+  }
+}
