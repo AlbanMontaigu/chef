@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 11
+SEED_VERSION = 12
 _MARKER = "seed_version"
 
 
@@ -464,6 +464,77 @@ BOOKINGS = [
 ]
 
 
+# Demandes de devis. Elles couvrent les quatre états et, surtout, les trois
+# formes que prend une date dans une demande : précise, floue, absente. C'est
+# la variable qui change le plus le travail du chef, et celle qu'un jeu naïf
+# réduirait à « une date remplie ».
+QUOTES = [
+    # (ref, nom, e-mail, tél, commune, date, service, souplesse, convives,
+    #  occasion, formule, régimes, message, statut, note, e-mails, créé il y a)
+    # À traiter, date et service précis : la seule qui propose « ouvrir ce créneau ».
+    ("Q-8HKM4T", "Sabrina Lefort", "sabrina.lefort@example.com", "06 52 19 44 07",
+     "44300 Nantes", 34, "soir", "", 12, "anniversaire", "signature",
+     [("sans-lactose", 1)],
+     "Les 40 ans de mon mari, chez nous, terrasse si le temps le permet.",
+     "new", "", ("sent", "sent", ""), -2),
+    # À traiter, aucune date : « un samedi de juin » est une demande normale.
+    ("Q-3PRDW9", "Comité des fêtes de Vertou", "comite@example.com", "02 40 33 91 18",
+     "44120 Vertou", None, "", "Un samedi de juin, plutôt en fin de mois", 60,
+     "professionnel", None, [("sans-porc", 8), ("vegetarien", 6)],
+     "Repas de clôture de saison, en salle des fêtes. Budget à discuter.",
+     "new", "", ("sent", "sent", ""), -1),
+    # Répondu, en attente du client : le cas le plus fréquent, et celui qui
+    # justifie la note interne.
+    ("Q-K2VNQ6", "Damien Rocher", "damien.rocher@example.com", "07 82 40 15 63",
+     "44115 Basse-Goulaine", 21, "midi", "", 8, "repas-famille", "decouverte", [],
+     "Baptême de notre fille, déjeuner à la maison.",
+     "answered", "Devis envoyé le 12, relancé une fois. Attend l'accord des parrains.",
+     ("sent", "sent", ""), -9),
+    # Devenu une réservation : la fin heureuse, qui doit se distinguer d'un
+    # devis simplement répondu.
+    ("Q-Y4WLC8", "Marion Delcroix", "marion.delcroix@example.com", "06 14 77 30 92",
+     "44000 Nantes", 44, "soir", "", 10, "diner-amis", "signature",
+     [("sans-fruits-a-coque", 1)],
+     "Un dîner un peu chic pour fêter une promotion.",
+     "converted", "Créneau ouvert, elle a réservé dans la foulée.",
+     ("sent", "sent", ""), -16),
+    # Refusé : trop loin, hors zone. Le devis garde la trace du refus plutôt
+    # que de disparaître -- sinon la même demande revient sans mémoire.
+    ("Q-M7BXJ3", "Hôtel des Dunes", "reservation2@example.com", "02 51 90 44 12",
+     "85160 Saint-Jean-de-Monts", 30, "soir", "", 35, "professionnel", None, [],
+     "Soirée de gala pour nos clients, en bord de mer.",
+     "declined", "Trop loin (1 h 40) pour un service du soir. Refusé poliment.",
+     ("sent", "sent", ""), -23),
+    # Accusé de réception en échec : la personne attend une réponse qu'elle
+    # croit en route. C'est le seul état sur lequel le chef doit agir vite.
+    ("Q-V5NTG2", "Paul Ferrand", "paul.ferrand@example.com", "", "44400 Rezé",
+     None, "midi", "Courant octobre", 4, "cours", "atelier", [],
+     "Un atelier cuisine pour offrir à ma compagne.",
+     "new", "", ("failed", "sent", "SMTPRecipientsRefused: 550 mailbox unavailable"), -4),
+]
+
+
+def _insert_quotes(conn, formula_ids: dict, formula_names: dict, now: str) -> None:
+    for (ref, name, email, phone, city, day, service, flex, guests, occasion,
+         slug, regimes, message, status, note, mails, created) in QUOTES:
+        mail_client, mail_chef, mail_error = mails
+        conn.execute(
+            """INSERT INTO quotes (ref, name, email, phone, city, wanted_date, service,
+                                   flexibility, guests, occasion, formula, formula_id,
+                                   diets, message, status, note, created_at, answered_at,
+                                   mail_client, mail_chef, mail_error, demo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (ref, name, email, phone, city, _d(day) if day is not None else "", service,
+             flex, guests, occasion, formula_names.get(slug, "") if slug else "",
+             formula_ids.get(slug) if slug else None,
+             diets.dumps([{"id": i, "count": n} for i, n in regimes]), message,
+             status, note, _d(created),
+             # La date de réponse n'existe que si le chef s'en est occupé.
+             _d(created + 1) if status != "new" else None,
+             mail_client, mail_chef, mail_error),
+        )
+
+
 # Rappels déjà joués. Le planificateur produit tout seul les lignes « en
 # attente » au premier tour ; ce qu'il ne peut pas fabriquer à la demande, ce
 # sont les issues passées — un envoi réussi, un échec définitif, un abandon.
@@ -534,6 +605,7 @@ def _purge(conn) -> int:
     # une chaîne ('booking:12'), pas par une clé étrangère. Ils se purgent donc
     # sur leur propre marqueur, comme tout le reste.
     conn.execute("DELETE FROM reminders WHERE demo = 1")
+    conn.execute("DELETE FROM quotes WHERE demo = 1")
     return removed
 
 
@@ -631,6 +703,7 @@ def _insert(conn) -> None:
                 status=spec["invoice"]["status"], now=now)
 
     _insert_reminders(conn, booking_ids, invoice_ids, now)
+    _insert_quotes(conn, formula_ids, formula_names, now)
 
 
 def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str,

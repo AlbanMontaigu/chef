@@ -3,7 +3,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
          BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
-         settingsPanel, remindersPanel, travelBadge, captureDraft,
+         settingsPanel, remindersPanel, quotesPanel, travelBadge, captureDraft,
          draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
@@ -14,6 +14,7 @@ const TABS = [
   ['agenda', 'Agenda'],
   ['facturation', 'Facturation'],
   ['formules', 'Formules'],
+  ['devis', 'Devis'],
   ['relances', 'Relances'],
   ['reglages', 'Réglages'],
 ];
@@ -88,6 +89,7 @@ function summary() {
     `<div class="stat"><b>${openFree}</b><s>créneau${openFree > 1 ? 'x' : ''} libre${openFree > 1 ? 's' : ''} ce mois</s></div>`,
     issues ? `<div class="stat alert"><b>${issues}</b><s>e-mail${issues > 1 ? 's' : ''} non parti${issues > 1 ? 's' : ''}</s></div>` : '',
     allergies ? `<div class="stat alert"><b>${allergies}</b><s>repas à venir avec allergie</s></div>` : '',
+    billing.quotes?.new ? `<div class="stat alert"><b>${billing.quotes.new}</b><s>devis à traiter</s></div>` : '',
     // Deux repères d'argent, seulement quand ils ont quelque chose à dire :
     // une tuile « 0 € en attente » occupe la place sans rien apprendre.
     toBill ? `<div class="stat"><b>${toBill}</b><s>repas passé${toBill > 1 ? 's' : ''} à facturer</s></div>` : '',
@@ -239,6 +241,7 @@ function bookingsPanel() {
 function tabBody() {
   if (view.tab === 'reglages') return settingsPanel();
   if (view.tab === 'relances') return remindersPanel();
+  if (view.tab === 'devis') return quotesPanel();
   if (view.tab === 'formules') return formulasPanel();
   if (view.tab === 'facturation') return invoicesPanel();
   return `<div class="admin-split">
@@ -302,6 +305,12 @@ async function refresh() {
       billing.pricingKinds = data.pricing_kinds;
     }
     if (view.tab === 'relances') billing.reminders = await api.reminders();
+    // Les devis sont TOUJOURS rechargés, même hors de l'onglet : le compte de
+    // demandes à traiter s'affiche dans le résumé de tête, sur toutes les
+    // pages, et un compte périmé est une information fausse plutôt qu'absente.
+    const quotes = await api.quotes();
+    billing.quotes = quotes;
+    billing.quoteStatuses = quotes.statuses;
 
     if (billing.folder) {
       const id = billing.folder.booking.id;
@@ -434,6 +443,19 @@ app.addEventListener('submit', async (event) => {
       await api.saveSettings({ chef_address: address });
       billing.settings.chef_address = address.trim();
       return address.trim() ? 'Adresse de départ enregistrée.' : 'Adresse de départ effacée.';
+    });
+    return;
+  }
+
+  const quoteForm = event.target.closest('[data-quote-form]');
+  if (quoteForm) {
+    event.preventDefault();
+    const id = Number(quoteForm.dataset.quoteForm);
+    const body = { status: quoteForm.elements.status.value, note: quoteForm.elements.note.value };
+    act(async () => {
+      await api.updateQuote(id, body);
+      billing.editingQuote = null;
+      return 'Demande mise à jour.';
     });
     return;
   }
@@ -581,6 +603,24 @@ app.addEventListener('click', (event) => {
       // Le compte est rendu tel quel, y compris à zéro : « rien à envoyer »
       // et « l'envoi ne marche pas » ne doivent pas se ressembler.
       return `${r.planned} planifié(s), ${r.sent} envoyé(s), ${r.skipped} abandonné(s), ${r.failed} en échec.`;
+    });
+    return;
+  }
+
+  const quoteEdit = event.target.closest('[data-quote-edit]');
+  if (quoteEdit) { billing.editingQuote = Number(quoteEdit.dataset.quoteEdit); render(); return; }
+  if (event.target.closest('[data-quote-cancel]')) { billing.editingQuote = null; render(); return; }
+
+  const quoteSlot = event.target.closest('[data-quote-slot]');
+  if (quoteSlot) {
+    act(async () => {
+      const r = await api.openQuoteSlot(Number(quoteSlot.dataset.quoteSlot));
+      // Ouvert n'est pas réservé : le client doit encore confirmer depuis le
+      // site, ce qui lui envoie sa vraie confirmation. Le dire évite que le
+      // chef considère la date comme acquise.
+      return r.opened
+        ? "Créneau ouvert. Envoyez le lien du site au client : c'est lui qui confirme."
+        : "Ce créneau était déjà ouvert. Envoyez le lien du site au client.";
     });
     return;
   }

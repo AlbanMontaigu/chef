@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from pydantic import BaseModel, Field, field_validator
 
 from .. import auth, billing, config, content, db, diets, mailer, reminders
+from . import public
 
 log = logging.getLogger("chef.admin")
 
@@ -315,3 +316,105 @@ def run_reminders() -> dict:
     si le silence vient d'une panne ou du calendrier.
     """
     return reminders.run_once()
+
+
+# --- Demandes de devis -------------------------------------------------
+
+QUOTE_STATUSES = ("new", "answered", "converted", "declined")
+QUOTE_STATUS_LABEL = {
+    "new": "à traiter", "answered": "répondu",
+    "converted": "devenu une réservation", "declined": "refusé",
+}
+
+
+class QuoteUpdateIn(BaseModel):
+    status: str = Field(default="")
+    note: str = Field(default="", max_length=2000)
+
+
+@router.get("/quotes", dependencies=[Depends(require_admin)])
+def list_quotes(status: str = "all", limit: int = 200) -> dict:
+    limit = max(1, min(limit, 500))
+    where, params = "", []
+    if status != "all":
+        where = "WHERE status = ?"
+        params.append(status)
+    with db.cursor() as conn:
+        rows = [dict(r) for r in conn.execute(
+            f"""SELECT * FROM quotes {where}
+                ORDER BY CASE status WHEN 'new' THEN 0 ELSE 1 END, created_at DESC
+                LIMIT ?""",
+            (*params, limit),
+        ).fetchall()]
+    for row in rows:
+        row["diets_detail"] = diets.describe(row.get("diets"))
+        # Le libellé vient du catalogue du formulaire public, pas d'une copie :
+        # deux listes d'occasions finiraient par diverger.
+        row["occasion_label"] = public.OCCASION_LABEL.get(row["occasion"], "")
+        row["status_label"] = QUOTE_STATUS_LABEL.get(row["status"], row["status"])
+        # Le créneau n'est proposable à l'ouverture que si la demande porte une
+        # date ET un service. « Un samedi de juin » ne s'ouvre pas tout seul.
+        row["openable"] = bool(row["wanted_date"] and row["service"])
+    return {
+        "quotes": rows,
+        "statuses": [{"value": v, "label": QUOTE_STATUS_LABEL[v]} for v in QUOTE_STATUSES],
+        # Le nombre à traiter est renvoyé à part : il alimente la pastille de
+        # l'onglet, et le chef doit le voir sans ouvrir la liste.
+        "new": sum(1 for r in rows if r["status"] == "new"),
+    }
+
+
+@router.patch("/quotes/{quote_id}", dependencies=[Depends(require_admin)])
+def update_quote(quote_id: int, payload: QuoteUpdateIn) -> dict:
+    """Statut et note interne. Aucune transition n'est automatique.
+
+    Le système ne sait pas si un devis a reçu une réponse : la réponse part de
+    la boîte mail du chef, pas d'ici. Deviner le ferait mentir.
+    """
+    if payload.status and payload.status not in QUOTE_STATUSES:
+        raise HTTPException(422, f"Statut inconnu : {payload.status}")
+    now = datetime.now(config.TZ).isoformat(timespec="seconds")
+    with db.transaction() as conn:
+        row = conn.execute("SELECT * FROM quotes WHERE id = ?", (quote_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Demande introuvable.")
+        status = payload.status or row["status"]
+        # La date de réponse se pose au premier passage hors de 'new' et ne
+        # bouge plus : c'est quand le chef s'en est occupé, pas quand il a
+        # retouché sa note six semaines après.
+        answered = row["answered_at"] or (now if status != "new" else None)
+        conn.execute(
+            "UPDATE quotes SET status = ?, note = ?, answered_at = ? WHERE id = ?",
+            (status, payload.note, answered, quote_id),
+        )
+    return {"id": quote_id, "status": status}
+
+
+@router.post("/quotes/{quote_id}/slot", dependencies=[Depends(require_admin)])
+def open_quote_slot(quote_id: int) -> dict:
+    """Ouvre le créneau demandé par un devis, pour que le client puisse réserver.
+
+    Le créneau est ouvert, pas réservé : c'est le client qui confirme depuis le
+    site, ce qui lui fait relire la date et lui envoie sa vraie confirmation.
+    Réserver à sa place produirait une réservation que personne n'a validée.
+    """
+    now = datetime.now(config.TZ).isoformat(timespec="seconds")
+    with db.transaction() as conn:
+        row = conn.execute("SELECT * FROM quotes WHERE id = ?", (quote_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Demande introuvable.")
+        if not (row["wanted_date"] and row["service"]):
+            raise HTTPException(422, "Cette demande ne porte pas de date et de service précis.")
+        taken = conn.execute(
+            """SELECT 1 FROM bookings b JOIN slots s ON s.id = b.slot_id
+               WHERE s.date = ? AND s.service = ? AND b.status = 'confirmed'""",
+            (row["wanted_date"], row["service"]),
+        ).fetchone()
+        if taken:
+            raise HTTPException(409, "Ce créneau est déjà réservé par quelqu'un d'autre.")
+        cur = conn.execute(
+            """INSERT INTO slots (date, service, note, created_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT (date, service) DO NOTHING""",
+            (row["wanted_date"], row["service"], f"Demande {row['ref']}", now),
+        )
+    return {"opened": cur.rowcount > 0, "date": row["wanted_date"], "service": row["service"]}

@@ -31,6 +31,9 @@ export const api = {
   issueInvoice: (id) => request(`/api/admin/invoices/${id}/issue`, { method: 'POST' }),
   cancelInvoice: (id, reason) => request(`/api/admin/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   sendInvoice: (id) => request(`/api/admin/invoices/${id}/send`, { method: 'POST' }),
+  quotes: () => request('/api/admin/quotes'),
+  updateQuote: (id, body) => request(`/api/admin/quotes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  openQuoteSlot: (id) => request(`/api/admin/quotes/${id}/slot`, { method: 'POST' }),
   reminders: () => request('/api/admin/reminders'),
   runReminders: () => request('/api/admin/reminders/run', { method: 'POST' }),
   settings: () => request('/api/admin/settings'),
@@ -76,6 +79,9 @@ export const billing = {
   settings: { chef_address: '' },
   editingAddress: false,
   reminders: null,
+  quotes: null,
+  quoteStatuses: [],
+  editingQuote: null,
 };
 
 /* Lien d'itinéraire vers l'application de cartes, pas un calcul embarqué : la
@@ -498,4 +504,92 @@ export function remindersPanel() {
     </div>
     ${rows || '<p class="hint" style="margin:0">Rien de prévu pour l\'instant.</p>'}
   </div>`;
+}
+
+
+// --- Demandes de devis ---------------------------------------------------
+
+/* Une demande de devis n'est pas une réservation : rien n'est bloqué, aucune
+   date n'est prise. Le back-office ne fait donc rien tout seul ici — c'est le
+   chef qui répond depuis sa boîte mail, et lui seul sait où en est l'échange.
+   Le statut est ce qu'il déclare, jamais ce qu'on devine à sa place. */
+
+const QUOTE_BADGE = { new: 'bad', answered: 'ok', converted: 'ok', declined: 'neutral' };
+
+function quoteWhen(q) {
+  const parts = [];
+  if (q.wanted_date) parts.push(longDate(q.wanted_date));
+  if (q.service) parts.push(SERVICE_LABEL[q.service] ?? q.service);
+  if (q.flexibility) parts.push(`« ${q.flexibility} »`);
+  // Jamais un blanc : « pas de date précise » est une réponse du client, pas
+  // une information manquante.
+  return parts.join(' · ') || 'pas de date précise';
+}
+
+function quoteMailBadge(q) {
+  if (q.mail_client === 'sent' && q.mail_chef === 'sent') return '';
+  if ([q.mail_client, q.mail_chef].includes('failed')) {
+    return `<span class="badge bad" title="${escapeHtml(q.mail_error ?? '')}">accusé non parti</span>`;
+  }
+  if ([q.mail_client, q.mail_chef].includes('disabled')) {
+    return '<span class="badge warn">envoi désactivé</span>';
+  }
+  return '';
+}
+
+function quoteEditor(q) {
+  const options = billing.quoteStatuses.map((s) =>
+    `<option value="${escapeHtml(s.value)}"${q.status === s.value ? ' selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
+  return `<form class="formula-form" data-quote-form="${q.id}">
+    <div class="row">
+      <label>Où en est-on<select name="status">${options}</select></label>
+      <label>Note interne<input name="note" value="${escapeHtml(q.note ?? '')}" maxlength="2000"
+        placeholder="Rappelé le 12, attend l'accord de son mari"></label>
+    </div>
+    <p class="hint">La note ne quitte jamais le back-office : le client ne la voit pas.</p>
+    <div class="actions">
+      <button class="btn primary" type="submit">Enregistrer</button>
+      <button class="btn" type="button" data-quote-cancel="1">Annuler</button>
+    </div>
+  </form>`;
+}
+
+export function quotesPanel() {
+  const data = billing.quotes;
+  if (!data) return `<div class="panel"><h2>Demandes de devis</h2>
+    <p class="hint" style="margin:0">Chargement…</p></div>`;
+
+  const rows = data.quotes.map((q) => {
+    if (billing.editingQuote === q.id) return `<div class="formula-row editing">${quoteEditor(q)}</div>`;
+    const subject = [q.guests ? `${q.guests} convives` : '', q.occasion_label || '',
+                     q.formula || ''].filter(Boolean).join(' · ');
+    const open = q.openable
+      ? `<button class="btn" data-quote-slot="${q.id}">Ouvrir ce créneau</button>` : '';
+    const mailto = `mailto:${escapeHtml(q.email)}?subject=${encodeURIComponent(`Votre demande ${q.ref}`)}`;
+    return `<div class="invoice-row">
+      <div>
+        <strong>${escapeHtml(q.name)}</strong> · ${escapeHtml(q.ref)}
+        <p class="meta">${escapeHtml(quoteWhen(q))}${subject ? ` — ${escapeHtml(subject)}` : ''}</p>
+        <p class="meta"><a href="${mailto}">${escapeHtml(q.email)}</a>${q.phone ? ` · ${escapeHtml(q.phone)}` : ''}${q.city ? ` · ${escapeHtml(q.city)}` : ''}</p>
+        ${q.diets_detail?.length ? `<p class="diet-line">${dietBadges(q.diets_detail)}</p>` : ''}
+        ${q.message ? `<p class="quote">« ${escapeHtml(q.message)} »</p>` : ''}
+        ${q.note ? `<p class="meta">Note : ${escapeHtml(q.note)}</p>` : ''}
+      </div>
+      <div class="actions">
+        <span class="badge ${QUOTE_BADGE[q.status] ?? 'neutral'}">${escapeHtml(q.status_label)}</span>
+        ${quoteMailBadge(q)}
+        ${open}
+        <button class="btn" data-quote-edit="${q.id}">Suivre</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const head = data.new
+    ? `<p class="hint"><strong>${escapeHtml(data.new)} demande(s) à traiter.</strong>
+       Répondez depuis votre boîte mail, puis notez ici où vous en êtes — le système
+       ne peut pas le deviner à votre place.</p>`
+    : '<p class="hint">Rien à traiter. Les demandes répondues restent listées.</p>';
+
+  return `<div class="panel"><h2>Demandes de devis</h2>${head}
+    ${rows || '<p class="hint" style="margin:0">Aucune demande pour l\'instant.</p>'}</div>`;
 }

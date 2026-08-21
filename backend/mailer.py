@@ -412,3 +412,91 @@ def send_to_invoice_reminder(booking: dict) -> tuple[str, str]:
     return _send(config.MAIL_TO,
                  f"[À facturer] {_short_date(booking['date'])} {service} — {booking['name']}",
                  body, reply_to=booking["email"])
+
+
+# --- Demandes de devis -------------------------------------------------
+
+def _quote_when(quote: dict) -> str:
+    """Ce que la personne a dit de la date. Jamais un blanc : « pas de date
+    précise » est une réponse, et le chef doit la lire comme telle."""
+    parts = []
+    if quote.get("wanted_date"):
+        parts.append(_pretty_date(quote["wanted_date"]))
+    if quote.get("service"):
+        parts.append(SERVICE_LABEL.get(quote["service"], quote["service"]))
+    if quote.get("flexibility"):
+        parts.append(f"« {quote['flexibility']} »")
+    return " · ".join(parts) or "pas de date précise"
+
+
+def _quote_chef_body(quote: dict) -> str:
+    return (
+        f"Demande de devis ({quote['ref']})\n\n"
+        f"  Quand      : {_quote_when(quote)}\n"
+        f"  Convives   : {quote['guests'] or 'non précisé'}\n"
+        f"  Occasion   : {quote['occasion'] or '—'}\n"
+        f"  Formule    : {quote['formula'] or 'aucune en tête'}\n"
+        f"{_diet_block(quote)}\n"
+        f"  Client     : {quote['name']}\n"
+        f"  E-mail     : {quote['email']}\n"
+        f"  Téléphone  : {quote['phone'] or '—'}\n"
+        f"  Secteur    : {quote['city'] or '—'}\n\n"
+        f"  Message    : {quote['message'] or '—'}\n\n"
+        f"Répondez directement à cet e-mail : il part sur son adresse.\n"
+        f"Back-office : {config.PUBLIC_URL}/admin\n"
+    )
+
+
+def _quote_ack_body(quote: dict, site_name: str) -> str:
+    return (
+        f"Bonjour {quote['name']},\n\n"
+        f"J'ai bien reçu votre demande et je vous réponds personnellement, "
+        f"sous deux jours ouvrés.\n\n"
+        f"Ce que j'ai noté :\n\n"
+        f"  Quand      : {_quote_when(quote)}\n"
+        f"  Convives   : {quote['guests'] or 'à préciser'}\n"
+        f"  Occasion   : {quote['occasion'] or 'à préciser'}\n"
+        f"  Référence  : {quote['ref']}\n\n"
+        f"Attention : **ceci n'est pas une réservation** — aucune date n'est "
+        f"bloquée pour l'instant. Nous en fixons une ensemble une fois le "
+        f"devis calé.\n\n"
+        f"Si j'ai mal compris quelque chose, répondez simplement à cet e-mail.\n\n"
+        f"À très vite,\n{site_name}\n"
+    )
+
+
+def send_quote_ack(quote: dict, site_name: str) -> tuple[str, str]:
+    """Accusé de réception, envoyé avant la réponse HTTP.
+
+    Il dit noir sur blanc que rien n'est réservé : une demande de devis qui
+    ressemble à une confirmation fait attendre un chef qui ne viendra pas.
+    """
+    return _send(quote["email"], f"Votre demande — {quote['ref']}",
+                 _quote_ack_body(quote, site_name), reply_to=config.MAIL_TO or "")
+
+
+def send_quote_notification(quote: dict) -> tuple[str, str]:
+    when = quote.get("wanted_date") and _short_date(quote["wanted_date"]) or "date libre"
+    return _send(
+        config.MAIL_TO,
+        f"[Devis] {when} — {quote['name']}"
+        + (f", {quote['guests']} couverts" if quote.get("guests") else ""),
+        _quote_chef_body(quote),
+        reply_to=quote["email"],
+    )
+
+
+def notify_chef_quote(quote: dict, ref: str, client_status: str, client_error: str) -> None:
+    """Tâche de fond : la copie du chef, et l'issue des deux envois.
+
+    Écrite sur la demande comme pour une réservation : un devis dont l'accusé
+    n'est jamais parti est une personne qui attend une réponse qu'elle croit
+    en route.
+    """
+    chef_status, chef_err = send_quote_notification(quote)
+    error = " | ".join(dict.fromkeys(p for p in (client_error, chef_err) if p))
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE quotes SET mail_client = ?, mail_chef = ?, mail_error = ? WHERE ref = ?",
+            (client_status, chef_status, error[:500], ref),
+        )

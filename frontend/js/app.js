@@ -1,7 +1,8 @@
 import { api } from './api.js';
-import { state, slotsByDate, EMPTY_FORM } from './state.js';
+import { state, slotsByDate, EMPTY_FORM, EMPTY_QUOTE } from './state.js';
 import { renderSite } from './views/site.js';
 import { renderBooking } from './views/booking.js';
+import { renderQuote } from './views/quote.js';
 
 const app = document.getElementById('app');
 
@@ -12,10 +13,16 @@ function renderBookingOnly() {
   if (host) host.innerHTML = renderBooking();
 }
 
+function renderQuoteOnly() {
+  const host = document.getElementById('quote');
+  if (host) host.innerHTML = renderQuote();
+}
+
 function renderAll() {
   app.innerHTML = renderSite(state.content);
   app.setAttribute('aria-busy', 'false');
   renderBookingOnly();
+  renderQuoteOnly();
   stampBuild();
 }
 
@@ -34,6 +41,53 @@ function captureForm() {
   for (const key of Object.keys(state.form)) {
     const field = form.elements[key];
     if (field) state.form[key] = field.value;
+  }
+}
+
+function captureQuote() {
+  const form = document.getElementById('quote-form');
+  if (!form) return;
+  for (const key of Object.keys(state.quoteForm)) {
+    const field = form.elements[key];
+    if (field) state.quoteForm[key] = field.value;
+  }
+}
+
+async function submitQuote() {
+  captureQuote();
+  state.quoteError = '';
+  const q = state.quoteForm;
+  if (!q.name.trim() || !q.email.trim()) {
+    // Volontairement peu exigeant : nom et e-mail suffisent. Tout le reste se
+    // précise dans l'échange, et un formulaire qui refuse fait perdre la
+    // demande plutôt que de l'améliorer.
+    state.quoteError = "Il me faut au moins votre nom et votre e-mail pour vous répondre.";
+    renderQuoteOnly();
+    return;
+  }
+  state.quoteSubmitting = true;
+  renderQuoteOnly();
+  try {
+    state.quoteConfirmation = await api.quote({
+      name: q.name.trim(),
+      email: q.email.trim(),
+      phone: q.phone.trim(),
+      city: q.city.trim(),
+      wanted_date: q.wanted_date,
+      service: q.service,
+      flexibility: q.flexibility.trim(),
+      guests: Number(q.guests) || 0,
+      occasion: q.occasion,
+      formula: q.formula,
+      diets: [...state.quoteDiets].map((id) => ({ id, count: 1 })),
+      message: q.message.trim(),
+    });
+    document.getElementById('devis')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    state.quoteError = err.message;
+  } finally {
+    state.quoteSubmitting = false;
+    renderQuoteOnly();
   }
 }
 
@@ -127,6 +181,14 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  if (event.target.closest('[data-quote-reset]')) {
+    state.quoteConfirmation = null;
+    state.quoteForm = { ...EMPTY_QUOTE };
+    state.quoteDiets = new Set();
+    renderQuoteOnly();
+    return;
+  }
+
   if (event.target.closest('[data-reset]')) {
     state.confirmation = null;
     state.form = { ...EMPTY_FORM };
@@ -140,6 +202,15 @@ app.addEventListener('click', (event) => {
    sur `change` et non sur `click` — un clic sur le libellé produit aussi un
    clic synthétique sur la case, et le régime se serait coché puis décoché. */
 app.addEventListener('change', (event) => {
+  const quoteBox = event.target.closest('[data-quote-diet]');
+  if (quoteBox) {
+    captureQuote();
+    const id = quoteBox.dataset.quoteDiet;
+    if (quoteBox.checked) state.quoteDiets.add(id); else state.quoteDiets.delete(id);
+    renderQuoteOnly();
+    return;
+  }
+
   const box = event.target.closest('[data-diet]');
   if (!box) return;
   captureForm();
@@ -160,6 +231,7 @@ app.addEventListener('input', (event) => {
 
 app.addEventListener('submit', (event) => {
   if (event.target.id === 'booking-form') { event.preventDefault(); submit(); }
+  if (event.target.id === 'quote-form') { event.preventDefault(); submitQuote(); }
 });
 
 async function start() {

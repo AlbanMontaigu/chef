@@ -12,6 +12,7 @@ function topbar(content) {
     content.sections?.length ? '<a href="#deroule">Comment ça marche</a>' : '',
     content.formulas?.length ? '<a href="#formules">Formules</a>' : '',
     content.about ? '<a href="#apropos">Le chef</a>' : '',
+    '<a href="#devis">Sur mesure</a>',
   ].filter(Boolean).join('');
   return `
     <div class="topbar">
@@ -142,6 +143,15 @@ export function renderSite(content) {
         <h2>Réserver une date</h2>
         <p class="lede">Choisissez un créneau libre, laissez vos coordonnées : la date est bloquée immédiatement.</p>
         <div class="booking-shell" id="booking"></div>
+      </div>
+    </section>
+    <section class="block" id="devis">
+      <div class="wrap">
+        <h2>Une date qui n'est pas au calendrier ?</h2>
+        <p class="lede">Un mariage, un buffet pour quarante, un samedi de juin encore flou :
+          le calendrier ne montre que les dates déjà ouvertes. Dites-moi ce que vous cherchez,
+          je vous réponds avec un devis.</p>
+        <div class="booking-shell" id="quote"></div>
       </div>
     </section>
     ${footer(content)}`;

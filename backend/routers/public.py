@@ -62,6 +62,7 @@ def get_content() -> dict:
     celui qui servira de base à la facture."""
     site = dict(content.load())
     site["diets"] = diets.catalogue()
+    site["occasions"] = [{"id": i, "label": label} for i, label in OCCASIONS]
     with db.cursor() as conn:
         site["formulas"] = billing.public_formulas(conn)
     return site
@@ -94,8 +95,144 @@ def availability() -> dict:
     }
 
 
-def _new_ref() -> str:
-    return "R-" + "".join(secrets.choice(REF_ALPHABET) for _ in range(6))
+def _new_ref(prefix: str = "R") -> str:
+    return f"{prefix}-" + "".join(secrets.choice(REF_ALPHABET) for _ in range(6))
+
+
+# Types d'événement proposés. Un menu fermé plutôt qu'un champ libre : le chef
+# ne cuisine pas pareil un dîner à deux et un buffet de baptême, et c'est la
+# première chose qu'il veut lire. « Autre » existe pour ne rien exclure.
+OCCASIONS = (
+    ("repas-famille", "Repas de famille"),
+    ("diner-amis", "Dîner entre amis"),
+    ("anniversaire", "Anniversaire"),
+    ("mariage", "Mariage, baptême, communion"),
+    ("professionnel", "Repas professionnel, séminaire"),
+    ("cours", "Cours ou atelier de cuisine"),
+    ("autre", "Autre"),
+)
+OCCASION_LABEL = dict(OCCASIONS)
+
+
+class QuoteIn(BaseModel):
+    """Une demande de devis exige beaucoup moins qu'une réservation.
+
+    Elle ne prend pas de créneau, donc elle n'a besoin ni d'une date, ni d'une
+    adresse, ni d'un nombre de convives exact : le nom, un moyen de rappeler,
+    et ce que la personne cherche. Chaque champ obligatoire de plus est une
+    demande qui n'arrive jamais.
+    """
+
+    name: str = Field(min_length=2, max_length=80)
+    email: str = Field(min_length=5, max_length=160)
+    phone: str = Field(default="", max_length=40)
+    city: str = Field(default="", max_length=120)
+    # Volontairement plus large que les 10 caractères d'une date ISO : la borne
+    # de Pydantic s'applique AVANT le validateur, et un `max_length=10` faisait
+    # refuser la demande entière au lieu de laisser `_wanted` blanchir un champ
+    # facultatif. Constaté en test sur « pas-une-date ».
+    wanted_date: str = Field(default="", max_length=40)
+    service: str = Field(default="", max_length=10)
+    flexibility: str = Field(default="", max_length=200)
+    guests: int = Field(default=0, ge=0, le=500)
+    occasion: str = Field(default="", max_length=40)
+    formula: str = Field(default="", max_length=120)
+    diets: list[dict] = Field(default_factory=list, max_length=20)
+    message: str = Field(default="", max_length=2000)
+
+    @field_validator("name", "phone", "city", "flexibility", "formula", "message")
+    @classmethod
+    def _strip_quote(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("email")
+    @classmethod
+    def _quote_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not EMAIL_RE.match(value):
+            raise ValueError("adresse e-mail invalide")
+        return value
+
+    @field_validator("wanted_date")
+    @classmethod
+    def _wanted(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            # Une date illisible est effacée plutôt que refusée : elle vaut
+            # « pas de date précise », et perdre la demande entière pour ce
+            # champ facultatif serait le pire des deux.
+            log.warning("date souhaitée illisible sur un devis : %r", value)
+            return ""
+        return value
+
+    @field_validator("service")
+    @classmethod
+    def _service(cls, value: str) -> str:
+        value = value.strip()
+        return value if value in ("midi", "soir") else ""
+
+    @field_validator("occasion")
+    @classmethod
+    def _occasion(cls, value: str) -> str:
+        value = value.strip()
+        return value if value in OCCASION_LABEL else ""
+
+
+@router.post("/quotes", status_code=201)
+def create_quote(payload: QuoteIn, background: BackgroundTasks) -> dict:
+    """Demande de devis : un message structuré, pas une réservation.
+
+    Rien n'est bloqué, aucune date n'est prise. La réponse du chef se fait à
+    la main -- c'est justement ce qui distingue une demande sur mesure d'un
+    créneau au calendrier.
+    """
+    try:
+        declared = diets.normalise(payload.diets, payload.guests or 1)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, f"Régime alimentaire non reconnu ({exc}).")
+
+    now = datetime.now(config.TZ).isoformat(timespec="seconds")
+    formula_id, formula_label = None, ""
+    with db.transaction() as conn:
+        if payload.formula:
+            row = conn.execute(
+                "SELECT id, name FROM formulas WHERE slug = ? AND active = 1",
+                (payload.formula,),
+            ).fetchone()
+            if row is not None:
+                formula_id, formula_label = row["id"], row["name"]
+        ref = _new_ref("Q")
+        conn.execute(
+            """INSERT INTO quotes (ref, name, email, phone, city, wanted_date, service,
+                                   flexibility, guests, occasion, formula, formula_id,
+                                   diets, message, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ref, payload.name, payload.email, payload.phone, payload.city,
+             payload.wanted_date, payload.service, payload.flexibility, payload.guests,
+             payload.occasion, formula_label, formula_id, diets.dumps(declared),
+             payload.message, now),
+        )
+
+    quote = {
+        "ref": ref, "name": payload.name, "email": payload.email, "phone": payload.phone,
+        "city": payload.city, "wanted_date": payload.wanted_date, "service": payload.service,
+        "flexibility": payload.flexibility, "guests": payload.guests,
+        "occasion": OCCASION_LABEL.get(payload.occasion, ""), "formula": formula_label,
+        "diets": diets.dumps(declared), "message": payload.message,
+    }
+    log.info("devis %s demandé par %s", ref, payload.email)
+
+    # Même règle que pour une réservation : l'accusé de réception part AVANT la
+    # réponse HTTP, puisque la page affirme qu'il est parti. La notification au
+    # chef suit en tâche de fond.
+    client_status, client_err = mailer.send_quote_ack(quote, content.site_name())
+    background.add_task(mailer.notify_chef_quote, quote, ref, client_status, client_err)
+
+    return {"ref": ref, "mail_sent": client_status == "sent"}
 
 
 @router.post("/bookings", status_code=201)

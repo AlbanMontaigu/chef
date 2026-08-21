@@ -28,6 +28,7 @@ export const api = {
   content: () => request('/api/content'),
   availability: () => request('/api/availability'),
   book: (body) => request('/api/bookings', { method: 'POST', body: JSON.stringify(body) }),
+  quote: (body) => request('/api/quotes', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 export { request };

@@ -222,3 +222,43 @@ CREATE TABLE IF NOT EXISTS reminders (
 -- fois, quel que soit le nombre de replanifications.
 CREATE UNIQUE INDEX IF NOT EXISTS reminders_once ON reminders (kind, target, due_on);
 CREATE INDEX IF NOT EXISTS reminders_due ON reminders (status, due_on);
+
+-- --------------------------------------------------------------------
+-- Demandes de devis. Le calendrier ne montre que les créneaux que le chef a
+-- ouverts ; tout ce qui n'y entre pas -- une date non ouverte, un mariage, un
+-- buffet de quarante personnes -- n'avait aucun chemin et se perdait. Une
+-- demande de devis n'est PAS une réservation : elle ne prend aucun créneau,
+-- ne bloque aucune date, et n'a donc pas d'index d'unicité à défendre.
+CREATE TABLE IF NOT EXISTS quotes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ref          TEXT NOT NULL UNIQUE,        -- Q-XXXXXX, lisible au téléphone
+    name         TEXT NOT NULL,
+    email        TEXT NOT NULL,
+    phone        TEXT NOT NULL DEFAULT '',
+    city         TEXT NOT NULL DEFAULT '',
+    -- Date souhaitée, quand il y en a une. Souvent absente : « un samedi de
+    -- juin » est une demande parfaitement normale, et la refuser faute de
+    -- date exacte ferait perdre la demande.
+    wanted_date  TEXT NOT NULL DEFAULT '',
+    service      TEXT NOT NULL DEFAULT '',    -- 'midi' | 'soir' | '' (peu importe)
+    flexibility  TEXT NOT NULL DEFAULT '',    -- « plutôt fin juin », « un week-end »
+    guests       INTEGER NOT NULL DEFAULT 0,
+    occasion     TEXT NOT NULL DEFAULT '',
+    formula      TEXT NOT NULL DEFAULT '',    -- libellé figé, comme sur une réservation
+    formula_id   INTEGER REFERENCES formulas(id) ON DELETE SET NULL,
+    diets        TEXT NOT NULL DEFAULT '[]',
+    message      TEXT NOT NULL DEFAULT '',
+    -- 'new' -> le chef n'a rien fait ; 'answered' -> il a répondu ;
+    -- 'converted' -> c'est devenu une réservation ; 'declined' -> refusée.
+    -- Aucune transition n'est automatique : c'est le chef qui sait.
+    status       TEXT NOT NULL DEFAULT 'new',
+    note         TEXT NOT NULL DEFAULT '',    -- interne, jamais montré au client
+    created_at   TEXT NOT NULL,
+    answered_at  TEXT,
+    mail_client  TEXT NOT NULL DEFAULT 'pending',
+    mail_chef    TEXT NOT NULL DEFAULT 'pending',
+    mail_error   TEXT NOT NULL DEFAULT '',
+    demo         INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS quotes_by_status ON quotes (status, created_at DESC);

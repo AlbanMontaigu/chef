@@ -9,11 +9,23 @@ export const state = {
   // pareil. Hors de `form`, qui est capturé champ par champ depuis le DOM.
   form: { name: '', email: '', phone: '', address: '', city: '', guests: '', formula: '', message: '' },
   diets: new Map(),
+  quoteForm: { name: '', email: '', phone: '', city: '', wanted_date: '',
+               service: '', flexibility: '', guests: '', occasion: '', formula: '', message: '' },
+  quoteDiets: new Set(),
+  quoteSubmitting: false,
+  quoteError: '',
+  quoteConfirmation: null,
   submitting: false,
   error: '',
   confirmation: null,   // {ref, date, service, mail_sent}
   loadError: '',
 };
+
+// Demande de devis : un état parallèle à celui de la réservation, pas une
+// variante du même. Les deux formulaires cohabitent sur la page, et une saisie
+// commencée dans l'un ne doit jamais se retrouver dans l'autre.
+export const EMPTY_QUOTE = { name: '', email: '', phone: '', city: '', wanted_date: '',
+  service: '', flexibility: '', guests: '', occasion: '', formula: '', message: '' };
 
 export const EMPTY_FORM = { name: '', email: '', phone: '', address: '', city: '', guests: '', formula: '', message: '' };
 

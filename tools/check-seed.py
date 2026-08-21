@@ -42,6 +42,7 @@ def _load() -> dict:
                 "SELECT b.*, s.date, s.service FROM bookings b JOIN slots s ON s.id = b.slot_id")],
             "payments": [dict(r) for r in conn.execute("SELECT * FROM payments")],
             "invoices": [dict(r) for r in conn.execute("SELECT * FROM invoices")],
+            "quotes": [dict(r) for r in conn.execute("SELECT * FROM quotes")],
         }
         data["states"] = {}
         for booking in data["bookings"]:
@@ -159,6 +160,30 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("envoi de facture réussi", any(i["mail_status"] == "sent" for i in issued)),
         ("envoi de facture en échec",
          any(i["mail_status"] == "failed" and i["mail_error"] for i in issued)),
+
+        # --- Demandes de devis
+        *[(f"devis au statut « {label} »",
+           any(q["status"] == value for q in d["quotes"]))
+          for value, label in (("new", "à traiter"), ("answered", "répondu"),
+                               ("converted", "devenu une réservation"),
+                               ("declined", "refusé"))],
+        ("devis avec date et service précis (« ouvrir ce créneau » proposé)",
+         any(q["wanted_date"] and q["service"] for q in d["quotes"])),
+        ("devis sans date, avec une souplesse en toutes lettres",
+         any(not q["wanted_date"] and q["flexibility"] for q in d["quotes"])),
+        ("devis sans date ni service précis (créneau non ouvrable)",
+         any(not (q["wanted_date"] and q["service"]) for q in d["quotes"])),
+        ("devis portant une note interne", any(q["note"] for q in d["quotes"])),
+        ("devis dont l'accusé de réception a échoué",
+         any(q["mail_client"] == "failed" and q["mail_error"] for q in d["quotes"])),
+        ("devis citant une formule", any(q["formula_id"] for q in d["quotes"])),
+        ("devis sans formule en tête", any(not q["formula_id"] for q in d["quotes"])),
+        ("devis avec des régimes déclarés",
+         any(diets.describe(q["diets"]) for q in d["quotes"])),
+        ("devis répondu porteur d'une date de réponse",
+         all(q["answered_at"] for q in d["quotes"] if q["status"] != "new")),
+        ("devis à traiter sans date de réponse",
+         all(not q["answered_at"] for q in d["quotes"] if q["status"] == "new")),
 
         # --- Rappels et relances
         *[(f"rappel planifié : {label.lower()}",

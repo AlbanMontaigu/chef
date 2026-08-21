@@ -166,11 +166,11 @@ export function renderBooking() {
   if (state.loadError) return `<p class="error" role="alert">${escapeHtml(state.loadError)}</p>`;
 
   if (!state.slots.length) {
-    const mail = state.content?.contact?.email ?? '';
-    const invite = mail
-      ? ` Écrivez-moi à <a href="mailto:${escapeHtml(mail)}">${escapeHtml(mail)}</a> et on trouvera une date ensemble.`
-      : ' Revenez bientôt, de nouvelles dates arrivent régulièrement.';
-    return `<p class="empty-cal">Aucune date n'est ouverte pour le moment.${invite}</p>`;
+    // Une impasse chasse le visiteur. Le devis est le chemin qui reste ouvert
+    // quand le calendrier est vide, et c'est là qu'il sert le plus.
+    return `<p class="empty-cal">Aucune date n'est ouverte pour le moment —
+      <a href="#devis">dites-moi ce que vous cherchez</a> et je vous réponds avec une
+      proposition de date.</p>`;
   }
 
   if (state.selectedSlot) return stepper() + form();
