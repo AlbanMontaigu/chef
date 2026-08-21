@@ -169,8 +169,9 @@ def seller_identity() -> dict:
         "status": legal.get("status") or "",
         "email": contact.get("email") or "",
         "phone": contact.get("phone") or "",
-        "iban": legal.get("iban") or "",
-        "bic": legal.get("bic") or "",
+        # L'environnement prime sur le fichier : cf. config.INVOICE_IBAN.
+        "iban": config.INVOICE_IBAN or legal.get("iban") or "",
+        "bic": config.INVOICE_BIC or legal.get("bic") or "",
         "payment_terms": legal.get("payment_terms") or "",
     }
 

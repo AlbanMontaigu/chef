@@ -36,8 +36,7 @@
     "status": "PLACEHOLDER — statut (ex. micro-entreprise)",
     "siret": "",
     "address": "PLACEHOLDER — adresse du siege, sur une ou deux lignes",
-    "iban": "",
-    "bic": "",
-    "payment_terms": "Paiement a reception. Pas d'escompte pour paiement anticipe. Penalites de retard : trois fois le taux d'interet legal, indemnite forfaitaire de recouvrement de 40 EUR."
+    "payment_terms": "Paiement a reception. Pas d'escompte pour paiement anticipe. Penalites de retard : trois fois le taux d'interet legal, indemnite forfaitaire de recouvrement de 40 EUR.",
+    "_iban": "NE PAS mettre l'IBAN ici : ce fichier est dans un depot GitHub public. Il se pose dans Coolify, variables INVOICE_IBAN et INVOICE_BIC."
   }
 }

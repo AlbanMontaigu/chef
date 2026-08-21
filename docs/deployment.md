@@ -51,6 +51,16 @@ Le montage doit apparaître avec `"Destination":"/app/backend/data"`.
 | `INVOICE_PREFIX` | préfixe des numéros de facture | défaut `F` (`F2026-001`) |
 | `PAYMENT_TERMS_DAYS` | échéance proposée sur un nouveau brouillon | défaut `30` |
 | `SEED_DEMO` | pose le jeu de démonstration | défaut : allumé en `DEV`, **éteint en production** |
+| `INVOICE_IBAN` | IBAN imprimé sur les factures | aucune coordonnée bancaire sur la facture |
+| `INVOICE_BIC` | BIC associé | IBAN seul |
+
+### Pourquoi l'IBAN n'est pas dans `content/site.json`
+
+Le dépôt est **public**. Raison sociale, adresse et SIRET sont des informations
+de registre, elles peuvent y vivre. L'IBAN, non : le donner à un client sur sa
+facture et le publier sur GitHub à perpétuité — indexé, et récupérable dans
+l'historique même après retrait — ne sont pas le même geste. Il se pose donc
+dans Coolify, et l'environnement prime sur le fichier.
 
 ### TVA — à confirmer avant la première vraie facture
 

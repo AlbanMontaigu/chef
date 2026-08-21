@@ -65,6 +65,15 @@ def mail_enabled() -> bool:
 VAT_RATE_BP = int(os.environ.get("VAT_RATE_BP", "0"))  # points de base : 2000 = 20 %
 VAT_NOTE = os.environ.get("VAT_NOTE", "TVA non applicable, art. 293 B du CGI")
 INVOICE_PREFIX = os.environ.get("INVOICE_PREFIX", "F")
+
+# Coordonnées bancaires imprimées sur la facture. Elles vivent ici, et PAS
+# dans content/site.json, parce que ce fichier est commité dans un dépôt
+# public : un IBAN donné à un client sur sa facture et un IBAN publié sur
+# GitHub à perpétuité ne sont pas le même geste. Le JSON reste lu en repli
+# pour ne pas casser une installation qui les y aurait mis, mais
+# l'environnement gagne.
+INVOICE_IBAN = os.environ.get("INVOICE_IBAN", "")
+INVOICE_BIC = os.environ.get("INVOICE_BIC", "")
 PAYMENT_TERMS_DAYS = int(os.environ.get("PAYMENT_TERMS_DAYS", "30"))
 
 # --- Jeu de démonstration ---------------------------------------------
