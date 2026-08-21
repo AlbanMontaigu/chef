@@ -71,6 +71,7 @@ async function submit() {
       city: f.city.trim(),
       guests: Number(f.guests),
       formula: f.formula,
+      diets: [...state.diets].map(([id, count]) => ({ id, count })),
       message: f.message.trim(),
     });
     state.selectedSlot = null;
@@ -129,8 +130,32 @@ app.addEventListener('click', (event) => {
   if (event.target.closest('[data-reset]')) {
     state.confirmation = null;
     state.form = { ...EMPTY_FORM };
+    state.diets = new Map();
     loadAvailability().then(renderBookingOnly);
   }
+});
+
+/* Cocher un régime re-rend le bloc réservation (le compteur apparaît), ce qui
+   réécrit le formulaire : la saisie en cours est donc capturée avant. Écouté
+   sur `change` et non sur `click` — un clic sur le libellé produit aussi un
+   clic synthétique sur la case, et le régime se serait coché puis décoché. */
+app.addEventListener('change', (event) => {
+  const box = event.target.closest('[data-diet]');
+  if (!box) return;
+  captureForm();
+  const id = box.dataset.diet;
+  if (box.checked) state.diets.set(id, state.diets.get(id) ?? 1);
+  else state.diets.delete(id);
+  renderBookingOnly();
+});
+
+/* Le nombre se met à jour SANS re-rendu : réécrire le formulaire à chaque
+   frappe ferait perdre le focus au milieu de la saisie. */
+app.addEventListener('input', (event) => {
+  const field = event.target.closest('[data-diet-count]');
+  if (!field) return;
+  const n = Math.max(1, Math.min(100, Number(field.value) || 1));
+  state.diets.set(field.dataset.dietCount, n);
 });
 
 app.addEventListener('submit', (event) => {

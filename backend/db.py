@@ -36,6 +36,7 @@ _ADDED_COLUMNS = (
     ("bookings", "formula_id", "INTEGER REFERENCES formulas(id) ON DELETE SET NULL"),
     ("bookings", "demo", "INTEGER NOT NULL DEFAULT 0"),
     ("bookings", "city", "TEXT NOT NULL DEFAULT ''"),
+    ("bookings", "diets", "TEXT NOT NULL DEFAULT '[]'"),
     ("bookings", "travel_seconds", "INTEGER"),
     ("bookings", "travel_meters", "INTEGER"),
     ("bookings", "travel_error", "TEXT NOT NULL DEFAULT ''"),

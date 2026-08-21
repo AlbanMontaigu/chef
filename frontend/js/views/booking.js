@@ -69,6 +69,41 @@ function chosenBar() {
   </div>`;
 }
 
+/* Régimes et allergies : une case, et dès qu'elle est cochée, le nombre de
+   convives concernés. Le nombre est la moitié utile de l'information — le chef
+   ne cuisine pas « des végétariens », il cuisine deux assiettes. Les allergies
+   sont regroupées en tête et signalées comme telles : le client doit voir
+   qu'il ne déclare pas la même chose qu'une préférence. */
+function dietPicker() {
+  const list = state.content.diets ?? [];
+  if (!list.length) return '';
+  const group = (allergy) => {
+    const items = list.filter((d) => d.allergy === allergy);
+    if (!items.length) return '';
+    const boxes = items.map((d) => {
+      const count = state.diets.get(d.id);
+      const on = count !== undefined;
+      return `<div class="diet${on ? ' on' : ''}">
+        <label><input type="checkbox" data-diet="${escapeHtml(d.id)}"${on ? ' checked' : ''}>
+          <span>${escapeHtml(d.label)}</span></label>
+        ${on ? `<input class="diet-count" type="number" inputmode="numeric" min="1" max="100"
+                  value="${escapeHtml(count)}" data-diet-count="${escapeHtml(d.id)}"
+                  aria-label="Nombre de convives — ${escapeHtml(d.label)}">` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="diet-group">
+      <h5>${allergy ? 'Allergies et intolérances' : 'Régimes et préférences'}</h5>
+      <div class="diet-list">${boxes}</div>
+    </div>`;
+  };
+  return `<fieldset class="diets">
+    <legend>Contraintes alimentaires à table</legend>
+    <p class="hint">Cochez ce qui concerne vos convives, et dites combien de personnes.
+      C'est là-dessus que le menu se construit — le détail se précise ensuite ensemble.</p>
+    ${group(true)}${group(false)}
+  </fieldset>`;
+}
+
 function form() {
   const cfg = state.content.booking ?? {};
   const f = state.form;
@@ -95,7 +130,8 @@ function form() {
         <label>Code postal et ville<input name="city" value="${escapeHtml(f.city)}" maxlength="120" autocomplete="address-level2" placeholder="44000 Nantes"></label>
       </div>
       ${options ? `<label>Formule envisagée<select name="formula"><option value="">À définir ensemble</option>${options}</select></label>` : ''}
-      <label>Allergies, envies, contraintes<textarea name="message" rows="3" maxlength="2000" placeholder="Un invité végétarien, une cuisine sans four…">${escapeHtml(f.message)}</textarea></label>
+      ${dietPicker()}
+      <label>Autre chose à me dire<textarea name="message" rows="3" maxlength="2000" placeholder="Une cuisine sans four, un anniversaire à fêter, un plat qu'on adore…">${escapeHtml(f.message)}</textarea></label>
       ${cfg.notice ? `<p class="notice">${escapeHtml(cfg.notice)}</p>` : ''}
       ${state.error ? `<p class="error" role="alert">${escapeHtml(state.error)}</p>` : ''}
       <button type="submit" class="cta" ${state.submitting ? 'disabled' : ''}>

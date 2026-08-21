@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from .. import billing, config, content, db, mailer
+from .. import billing, config, content, db, diets, mailer
 
 log = logging.getLogger("chef.public")
 
@@ -34,6 +34,9 @@ class BookingIn(BaseModel):
     # réécrit dans le back-office, la référence choisie ce jour-là ne doit pas
     # bouger avec lui. Le libellé est figé côté serveur au moment de l'écriture.
     formula: str = Field(default="", max_length=120)
+    # [{"id": "sans-gluten", "count": 2}] -- cf. backend/diets.py. Le champ
+    # libre `message` reste : il dit ce qu'un catalogue fermé ne dira jamais.
+    diets: list[dict] = Field(default_factory=list, max_length=20)
     message: str = Field(default="", max_length=2000)
 
     @field_validator("name", "phone", "address", "city", "formula", "message")
@@ -58,6 +61,7 @@ def get_content() -> dict:
     qu'un seul document à lire, et un tarif affiché sur le site est toujours
     celui qui servira de base à la facture."""
     site = dict(content.load())
+    site["diets"] = diets.catalogue()
     with db.cursor() as conn:
         site["formulas"] = billing.public_formulas(conn)
     return site
@@ -104,6 +108,12 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
             422, f"Le nombre de convives doit être compris entre {min_guests} et {max_guests}."
         )
 
+    try:
+        declared = diets.normalise(payload.diets, payload.guests)
+    except (TypeError, ValueError) as exc:
+        # Refuser, pas ignorer : le client croit avoir signalé une allergie.
+        raise HTTPException(422, f"Régime alimentaire non reconnu ({exc}).")
+
     first = today() + timedelta(days=int(cfg.get("lead_days", 3)))
     now = datetime.now(config.TZ).isoformat(timespec="seconds")
     formula_id, formula_label = None, ""
@@ -149,12 +159,12 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
             """
             INSERT INTO bookings
                 (ref, slot_id, name, email, phone, address, city, guests, formula,
-                 formula_id, message, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
+                 formula_id, message, diets, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
             """,
             (ref, payload.slot_id, payload.name, payload.email, payload.phone,
              payload.address, payload.city, payload.guests, formula_label, formula_id,
-             payload.message, now),
+             payload.message, diets.dumps(declared), now),
         )
         booking_id = cur.lastrowid
 
@@ -163,6 +173,7 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
         "name": payload.name, "email": payload.email, "phone": payload.phone,
         "address": payload.address, "city": payload.city, "guests": payload.guests,
         "formula": formula_label, "message": payload.message,
+        "diets": diets.dumps(declared),
     }
     log.info("booking %s created for %s %s", ref, slot["date"], slot["service"])
 

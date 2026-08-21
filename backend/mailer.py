@@ -13,7 +13,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
-from . import config, db
+from . import config, db, diets
 
 log = logging.getLogger("chef.mail")
 
@@ -89,6 +89,20 @@ def _pretty_date(iso_date: str) -> str:
     return f"{days[d.weekday()]} {d.day} {months[d.month - 1]} {d.year}"
 
 
+def _diet_block(booking: dict, indent: str = "  ") -> str:
+    """Bloc régimes, TOUJOURS présent — y compris vide.
+
+    Un bloc qui disparaît quand il n'y a rien à dire est indistinguable d'un
+    bloc oublié : le chef ne saurait pas s'il n'y a pas d'allergie ou si la
+    question n'a pas été posée. Il est donc écrit dans les deux cas.
+    """
+    lines = diets.text_lines(booking.get("diets"))
+    if not lines:
+        return f"{indent}Régimes    : aucun signalé\n"
+    body = f"\n{indent}             ".join(lines)
+    return f"{indent}Régimes    : {body}\n"
+
+
 def _client_body(booking: dict, site_name: str) -> str:
     service = SERVICE_LABEL.get(booking["service"], booking["service"])
     return (
@@ -97,9 +111,12 @@ def _client_body(booking: dict, site_name: str) -> str:
         f"  Date       : {_pretty_date(booking['date'])} ({service})\n"
         f"  Convives   : {booking['guests']}\n"
         f"  Formule    : {booking['formula'] or 'à définir ensemble'}\n"
+        f"{_diet_block(booking)}"
         f"  Référence  : {booking['ref']}\n\n"
         f"Je vous recontacte rapidement pour caler le menu et les derniers "
-        f"détails (allergies, matériel sur place, horaire d'arrivée).\n\n"
+        f"détails (matériel sur place, horaire d'arrivée). Si la ligne "
+        f"« Régimes » ci-dessus est incomplète ou fausse, dites-le moi : "
+        f"c'est sur elle que je construis le menu.\n\n"
         f"Pour annuler ou modifier, répondez simplement à cet e-mail.\n\n"
         f"À très bientôt,\n{site_name}\n"
     )
@@ -116,7 +133,8 @@ def _chef_body(booking: dict) -> str:
         f"Nouvelle réservation ({booking['ref']})\n\n"
         f"  Date       : {_pretty_date(booking['date'])} ({service})\n"
         f"  Convives   : {booking['guests']}\n"
-        f"  Formule    : {booking['formula'] or '—'}\n\n"
+        f"  Formule    : {booking['formula'] or '—'}\n"
+        f"{_diet_block(booking)}\n"
         f"  Client     : {booking['name']}\n"
         f"  E-mail     : {booking['email']}\n"
         f"  Téléphone  : {booking['phone'] or '—'}\n"
@@ -166,7 +184,9 @@ def send_chef_notification(booking: dict) -> tuple[str, str]:
     service = SERVICE_LABEL.get(booking["service"], booking["service"])
     return _send(
         config.MAIL_TO,
-        f"[Réservation] {_short_date(booking['date'])} {service} — {booking['name']}, {booking['guests']} couverts",
+        f"[Réservation] {_short_date(booking['date'])} {service} — {booking['name']}, "
+        f"{booking['guests']} couverts"
+        + (" ⚠ allergie" if diets.has_allergy(booking.get("diets")) else ""),
         _chef_body(booking),
         reply_to=booking["email"],
     )

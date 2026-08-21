@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS bookings (
     formula       TEXT NOT NULL DEFAULT '',
     formula_id    INTEGER REFERENCES formulas(id) ON DELETE SET NULL,
     message       TEXT NOT NULL DEFAULT '',
+    -- Régimes et allergies déclarés : JSON [{"id": "sans-gluten", "count": 2}].
+    -- Sortis du message libre à dessein : une allergie noyée dans un
+    -- paragraphe se lit le jour du repas, ou pas du tout. Le nombre compte
+    -- autant que la nature -- cf. backend/diets.py.
+    diets         TEXT NOT NULL DEFAULT '[]',
     status        TEXT NOT NULL DEFAULT 'confirmed',   -- 'confirmed' | 'cancelled'
     created_at    TEXT NOT NULL,
     cancelled_at  TEXT,

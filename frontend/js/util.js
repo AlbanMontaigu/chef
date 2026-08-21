@@ -97,3 +97,19 @@ export const BILLING_STATE_LABEL = {
   partial: 'partiellement payé', paid: 'soldé', overpaid: 'trop-perçu',
   cancelled: 'annulée',
 };
+
+
+// --- Régimes et allergies ------------------------------------------------
+// Le serveur envoie déjà [{id, label, count, allergy}] : le libellé et le
+// caractère « allergie » viennent du catalogue serveur, jamais d'une table
+// recopiée ici qui prendrait du retard sur lui.
+
+// Ligne toujours rendue, y compris vide. Un bloc qui s'efface quand il n'y a
+// rien à dire ne se distingue pas d'un bloc oublié : le chef doit lire
+// « aucun régime signalé » et non un blanc.
+export function dietBadges(list) {
+  if (!list?.length) return '<span class="badge neutral">aucun régime signalé</span>';
+  return list.map((d) =>
+    `<span class="badge ${d.allergy ? 'bad' : 'neutral'}"${d.allergy ? ' title="Allergie ou intolérance déclarée"' : ''}>${escapeHtml(d.count)} × ${escapeHtml(d.label)}${d.allergy ? ' ⚠' : ''}</span>`
+  ).join(' ');
+}

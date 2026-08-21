@@ -4,7 +4,11 @@ export const state = {
   slots: [],            // [{id, date, service, note}] — uniquement les créneaux libres
   selectedDate: null,   // YYYY-MM-DD choisi dans la liste
   selectedSlot: null,   // le créneau retenu (date + service)
+  // `diets` est une Map id -> nombre de convives concernés. Pas un tableau de
+  // booléens : « deux végétariens » et « des végétariens » ne se cuisinent pas
+  // pareil. Hors de `form`, qui est capturé champ par champ depuis le DOM.
   form: { name: '', email: '', phone: '', address: '', city: '', guests: '', formula: '', message: '' },
+  diets: new Map(),
   submitting: false,
   error: '',
   confirmation: null,   // {ref, date, service, mail_sent}

@@ -16,7 +16,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-from . import config, content, money, settings, travel
+from . import config, content, diets, money, settings, travel
 
 log = logging.getLogger("chef.billing")
 
@@ -298,6 +298,10 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         # second appel ferait clignoter le lien après coup.
         "chef_address": settings.chef_address(),
         "client_address": full_address(booking),
+        # Le dossier peut être ouvert depuis l'onglet Facturation, où la
+        # réservation n'est pas dans la liste chargée : les régimes voyagent
+        # donc avec les données du dossier, pas seulement avec la carte.
+        "diets": diets.describe(booking.get("diets")),
         "address": booking.get("address") or "",
         "city": booking.get("city") or "",
         "travel": travel_view(booking),

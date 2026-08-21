@@ -14,7 +14,7 @@
 import { request } from '../js/api.js';
 import { escapeHtml, longDate, formatAmount, parseAmount, amountInput,
          SERVICE_LABEL, PAYMENT_KIND_LABEL, PAYMENT_METHOD_LABEL,
-         BILLING_STATE_LABEL } from '../js/util.js';
+         BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 
 export const api = {
   formulas: () => request('/api/admin/formulas'),
@@ -398,6 +398,7 @@ export function folderPanel() {
           <h2>${escapeHtml(booking.name)}</h2>
           <p class="hint">${escapeHtml(longDate(booking.date))} — ${escapeHtml(SERVICE_LABEL[booking.service] ?? booking.service)}
             · ${escapeHtml(booking.guests)} couverts · ${escapeHtml(booking.formula || 'formule à définir')} · réf. ${escapeHtml(booking.ref)}</p>
+          <p class="diet-line">${dietBadges(data.diets)}</p>
           ${travelLine(booking, data)}
         </div>
         <button class="btn" data-folder-close="1">Fermer</button>

@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, billing, config, content, db, mailer
+from .. import auth, billing, config, content, db, diets, mailer
 
 log = logging.getLogger("chef.admin")
 
@@ -192,6 +192,10 @@ def list_bookings(status: str = "confirmed", limit: int = 200) -> dict:
             (*params, limit),
         ).fetchall()
         bookings = [_with_billing(conn, dict(r)) for r in rows]
+    # Les régimes sont dépliés ici plutôt que dans le front : le libellé et le
+    # caractère « allergie » viennent du catalogue serveur, qui fait foi.
+    for booking in bookings:
+        booking["diets_detail"] = diets.describe(booking.get("diets"))
     # Anything whose mail did not go out is an open loop the chef must know
     # about: the client may be expecting a confirmation that never arrived.
     issues = [b for b in bookings if "failed" in (b["mail_client"], b["mail_chef"])

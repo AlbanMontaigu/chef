@@ -1,7 +1,7 @@
 import { request } from '../js/api.js';
 import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
-         BILLING_STATE_LABEL } from '../js/util.js';
+         BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
          settingsPanel, travelBadge, captureDraft, draftPayload } from './billing.js';
 
@@ -79,11 +79,13 @@ function summary() {
   // Un repas déjà servi et non facturé est de l'argent oublié, pas une tâche
   // en cours : il ne compte qu'une fois la date passée.
   const toBill = view.bookings.filter((b) => b.date < today && !b.invoice_id).length;
+  const allergies = upcoming.filter((b) => (b.diets_detail ?? []).some((d) => d.allergy)).length;
   const cards = [
     `<div class="stat"><b>${upcoming.length}</b><s>réservation${upcoming.length > 1 ? 's' : ''} à venir</s></div>`,
     `<div class="stat"><b>${covers}</b><s>couverts à préparer</s></div>`,
     `<div class="stat"><b>${openFree}</b><s>créneau${openFree > 1 ? 'x' : ''} libre${openFree > 1 ? 's' : ''} ce mois</s></div>`,
     issues ? `<div class="stat alert"><b>${issues}</b><s>e-mail${issues > 1 ? 's' : ''} non parti${issues > 1 ? 's' : ''}</s></div>` : '',
+    allergies ? `<div class="stat alert"><b>${allergies}</b><s>repas à venir avec allergie</s></div>` : '',
     // Deux repères d'argent, seulement quand ils ont quelque chose à dire :
     // une tuile « 0 € en attente » occupe la place sans rien apprendre.
     toBill ? `<div class="stat"><b>${toBill}</b><s>repas passé${toBill > 1 ? 's' : ''} à facturer</s></div>` : '',
@@ -218,6 +220,7 @@ function bookingsPanel() {
       <div class="when">${escapeHtml(longDate(b.date))} — ${escapeHtml(SERVICE_LABEL[b.service] ?? b.service)} · ${escapeHtml(b.guests)} couverts</div>
       <p class="who"><strong>${escapeHtml(b.name)}</strong> · <a href="mailto:${escapeHtml(b.email)}">${escapeHtml(b.email)}</a>${b.phone ? ` · <a href="tel:${escapeHtml(b.phone.replace(/\s/g, ''))}">${escapeHtml(b.phone)}</a>` : ''}</p>
       <p class="meta">${escapeHtml(b.address || 'adresse non renseignée')} · ${escapeHtml(b.formula || 'formule à définir')} · réf. ${escapeHtml(b.ref)}</p>
+      <p class="diet-line">${dietBadges(b.diets_detail)}</p>
       ${b.message ? `<p class="quote">« ${escapeHtml(b.message)} »</p>` : ''}
       <p class="meta">${billingLine(b)}</p>
       <div class="actions">

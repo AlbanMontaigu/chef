@@ -21,13 +21,13 @@ import json
 import logging
 from datetime import date, timedelta
 
-from . import billing, config, db
+from . import billing, config, db, diets
 
 log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 8
+SEED_VERSION = 9
 _MARKER = "seed_version"
 
 
@@ -141,7 +141,8 @@ BOOKINGS = [
         # Trajet déjà estimé : le cas nominal.
         "travel": (1080, 7400, ""),
         "guests": 8, "formula": "signature",
-        "message": "Un invité ne mange pas de crustacés.",
+        "message": "Table dressée dans la véranda, four à disposition.",
+        "diets": [("sans-crustaces", 1)],
         "mail": ("sent", "sent", ""),
         "invoice": {
             "status": "issued", "issued": -23, "due": 7,
@@ -284,7 +285,8 @@ BOOKINGS = [
         "phone": "07 88 21 65 40", "address": "5 rue Kervégan", "city": "44000 Nantes",
         "travel": (840, 4200, ""),
         "guests": 10, "formula": "signature",
-        "message": "Deux personnes végétariennes, une allergie aux fruits à coque.",
+        "message": "Anniversaire surprise : arrivée discrète si possible.",
+        "diets": [("sans-fruits-a-coque", 1), ("vegetarien", 2)],
         "mail": ("sent", "sent", ""),
         "invoice": {
             "status": "draft", "due": 30,
@@ -334,7 +336,8 @@ BOOKINGS = [
         "phone": "02 40 60 14 22", "address": "Route des Marais, lieu-dit La Grande Prée",
         "city": "44500 La Baule-Escoublac",
         "guests": 24, "formula": "bord-de-mer",
-        "message": "Séminaire de clôture. Deux personnes sans gluten, une sans lactose.",
+        "message": "Séminaire de clôture. Cuisine du domaine à disposition.",
+        "diets": [("sans-gluten", 2), ("sans-lactose", 1)],
         "mail": ("sent", "sent", ""),
         "travel": (3300, 71000, "", True),
         "invoice": {
@@ -421,6 +424,7 @@ BOOKINGS = [
         "city": "44210 Pornic",
         "guests": 6, "formula": "bord-de-mer",
         "message": "Terrasse face au port si la météo le permet.",
+        "diets": [("sans-alcool", 2)],
         "mail": ("sent", "sent", ""),
         "travel": (3060, 58200, ""),
         "payments": [],
@@ -518,15 +522,16 @@ def _insert(conn) -> None:
         slug = spec["formula"]
         cur = conn.execute(
             """INSERT INTO bookings (ref, slot_id, name, email, phone, address, city, guests,
-                                     formula, formula_id, message, status, created_at,
+                                     formula, formula_id, message, diets, status, created_at,
                                      cancelled_at, mail_client, mail_chef, mail_error,
                                      travel_seconds, travel_meters, travel_error,
                                      travel_label, travel_approx, travel_at, demo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
             (spec["ref"], slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
              spec["address"], spec.get("city", ""), spec["guests"],
              formula_names.get(slug, "") if slug else "",
              formula_ids.get(slug) if slug else None, spec["message"],
+             diets.dumps([{"id": i, "count": n} for i, n in spec.get("diets", [])]),
              spec.get("status", "confirmed"), _d(slot_key[0] - 30),
              _d(spec["cancelled"]) if spec.get("cancelled") is not None else None,
              mail_client, mail_chef, mail_error,

@@ -269,6 +269,27 @@ input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px var(--terracotta-soft);
 }
 textarea { resize: vertical; }
+/* Régimes et allergies : des cases larges, cliquables au pouce, et le nombre
+   de convives qui n'apparaît qu'une fois la case cochée — un champ vide à
+   côté de chaque ligne remplirait l'écran de zéros à ne pas remplir. */
+.diets { border: 1px solid var(--line); border-radius: var(--r); padding: 1.1rem 1.15rem 1.25rem; margin: 0; background: var(--paper-warm); }
+.diets legend { font: 600 0.85rem/1.4 var(--sans); color: var(--ink-soft); padding: 0 0.4rem; }
+.diets .hint { font-size: 0.85rem; color: var(--ink-soft); margin: 0 0 1rem; }
+.diet-group + .diet-group { margin-top: 1.1rem; }
+.diet-group h5 { font: 600 0.78rem/1.4 var(--sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 0.6rem; }
+.diet-list { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.diet {
+  display: flex; align-items: center; gap: 0.5rem; background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0.4rem 0.6rem;
+}
+.diet.on { border-color: var(--terracotta); background: var(--terracotta-soft); }
+.diet label { display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; margin: 0; cursor: pointer; font-weight: 500; color: var(--ink); }
+.diet input[type=checkbox] { width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--terracotta); margin: 0; }
+.diet span { font-size: 0.92rem; }
+.diet-count { width: 3.6rem; flex: none; padding: 0.35rem 0.4rem; text-align: center; font-weight: 600; }
+/* Ligne de régimes du back-office. */
+.diet-line { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0.5rem 0; }
+
 .notice { font-size: 0.88rem; color: var(--ink-soft); margin: 0; }
 .error { color: var(--bad); font: 600 0.92rem/1.5 var(--sans); margin: 0; }
 .warn { color: var(--warn); font-size: 0.92rem; }

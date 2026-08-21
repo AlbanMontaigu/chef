@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, seed, settings  # noqa: E402  (l'env doit précéder l'import)
+from backend import billing, db, diets, seed, settings  # noqa: E402  (l'env doit précéder l'import)
 
 
 def _load() -> dict:
@@ -95,6 +95,28 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
              and not any(i["booking_id"] == b["id"] and i["status"] != "cancelled"
                          for i in invoices)
              for b in bookings)),
+
+        # --- Régimes et allergies
+        ("catalogue de régimes servi au formulaire", bool(diets.catalogue())),
+        ("catalogue distinguant allergies et préférences",
+         any(d["allergy"] for d in diets.catalogue())
+         and any(not d["allergy"] for d in diets.catalogue())),
+        ("réservation sans aucun régime signalé",
+         any(not diets.describe(b["diets"]) for b in bookings)),
+        ("réservation avec une allergie déclarée",
+         any(diets.has_allergy(b["diets"]) for b in bookings)),
+        ("réservation avec une préférence seule, sans allergie",
+         any(diets.describe(b["diets"]) and not diets.has_allergy(b["diets"])
+             for b in bookings)),
+        ("réservation cumulant allergie et préférence",
+         any(diets.has_allergy(b["diets"])
+             and any(not d["allergy"] for d in diets.describe(b["diets"]))
+             for b in bookings)),
+        ("régime portant sur plusieurs convives (le nombre, pas juste la nature)",
+         any(d["count"] > 1 for b in bookings for d in diets.describe(b["diets"]))),
+        ("régime jamais supérieur au nombre de convives",
+         all(d["count"] <= b["guests"] for b in bookings
+             for d in diets.describe(b["diets"]))),
 
         # --- Encaissements
         *[(f"encaissement par {method}", any(p["method"] == method for p in payments))
