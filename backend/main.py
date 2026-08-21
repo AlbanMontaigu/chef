@@ -10,8 +10,9 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 
 from . import config, content, db
 from .routers import admin, public
@@ -37,6 +38,29 @@ async def lifespan(_: FastAPI):
     if not config.mail_enabled():
         log.warning("SMTP_HOST unset - booking confirmations will NOT be sent")
     yield
+
+
+class FrontendFiles(StaticFiles):
+    """Static frontend with revalidation forced on code, caching kept on media.
+
+    There is no build step here, so `admin.js` keeps its name from one version
+    to the next and a browser has no way to know it changed. Left to default
+    heuristics it serves the previous module happily -- which is how a deploy
+    can land on the server and stay invisible in the browser, mixing a new
+    stylesheet with old code. `no-cache` does not mean "never cache": the file
+    is still stored, the browser just has to revalidate, and the ETag turns
+    that into a cheap 304. Images keep a long cache: their content changes only
+    by changing filename.
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        path = str(args[0]) if args else ""
+        if path.rsplit(".", 1)[-1].lower() in ("html", "js", "css", "json", "txt"):
+            response.headers["Cache-Control"] = "no-cache"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=604800"
+        return response
 
 
 app = FastAPI(title="Chef a domicile", docs_url=None, redoc_url=None,
@@ -72,16 +96,24 @@ def health() -> dict:
 
 
 @app.get("/build.txt", include_in_schema=False)
-def build() -> FileResponse:
+def build() -> Response:
+    """Build stamp. Absent in a dev checkout -- the image creates it -- so the
+    missing case answers empty rather than erroring on a cosmetic file."""
     path = os.path.join(FRONTEND, "build.txt")
-    return FileResponse(path if os.path.exists(path) else os.devnull, media_type="text/plain")
+    headers = {"Cache-Control": "no-cache"}
+    if not os.path.exists(path):
+        return PlainTextResponse("", headers=headers)
+    return FileResponse(path, media_type="text/plain", headers=headers)
 
 
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
 def admin_page() -> FileResponse:
-    return FileResponse(os.path.join(FRONTEND, "admin", "index.html"))
+    return FileResponse(
+        os.path.join(FRONTEND, "admin", "index.html"),
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # Mounted last: it owns every path the API did not claim.
-app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
+app.mount("/", FrontendFiles(directory=FRONTEND, html=True), name="frontend")
