@@ -4,6 +4,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# curl is here for the health check, not for the app: Coolify probes /health by
+# exec'ing curl inside the container, and python:slim ships neither curl nor
+# wget -- without it the container is declared unhealthy and every deploy rolls
+# back, however healthy the app actually is.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
