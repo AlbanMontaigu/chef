@@ -532,3 +532,9 @@ body.admin { background: var(--paper); color: var(--ink); }
   .line, .line.frozen, .payment { grid-template-columns: 1fr; }
   .line .num, .payment .num { text-align: left; }
 }
+
+/* Ligne de trajet dans le dossier : l'adresse du repas et le lien qui ouvre
+   la navigation. Le lien manquant est expliqué, jamais simplement absent. */
+.travel { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+          margin: 0.5rem 0 0; font-size: 0.92rem; }
+.travel.muted { color: var(--ink-soft); }

@@ -89,6 +89,21 @@ than that are filtered out of the public calendar. The back-office flags such
 a slot as "ouvert mais trop proche" instead of showing a green "Ouvert" that
 nobody can book.
 
+## Where a private setting goes
+
+`backend/settings.py`, i.e. rows in `meta`, read only by the back-office.
+`content/site.json` is committed to a **public** repo and `/api/content` is
+served to every visitor, so neither can hold anything private. The chef's
+departure address is the current example: it is most likely his home, it never
+appears on the site or on an invoice, and he must be able to change it himself
+without a redeploy.
+
+Adding a setting means one entry in `DEFAULTS` and one field in the Réglages
+tab. Anything the chef would have to open a ticket to change belongs here
+rather than in an environment variable — env vars are for what an operator
+sets once (`SMTP_HOST`, `INVOICE_IBAN`), settings are for what the chef
+changes.
+
 ## Money, formulas and invoices
 
 - **Every amount is an integer of cents**, front and back (`backend/money.py`,

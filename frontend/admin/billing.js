@@ -30,6 +30,8 @@ export const api = {
   issueInvoice: (id) => request(`/api/admin/invoices/${id}/issue`, { method: 'POST' }),
   cancelInvoice: (id, reason) => request(`/api/admin/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   sendInvoice: (id) => request(`/api/admin/invoices/${id}/send`, { method: 'POST' }),
+  settings: () => request('/api/admin/settings'),
+  saveSettings: (body) => request('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
 export const billing = {
@@ -39,7 +41,19 @@ export const billing = {
   outstanding: 0,
   folder: null,        // {booking, data} — le dossier ouvert
   editingFormula: null, // id, ou 'new', ou null
+  settings: { chef_address: '' },
 };
+
+/* Lien d'itinéraire vers l'application de cartes, pas un calcul embarqué : la
+   page ne fait aucun appel réseau sortant, c'est le chef qui clique et c'est
+   son téléphone qui ouvre la navigation. Le trajet est la seule chose qu'on ne
+   sait pas donner sans dépendre d'un service tiers. */
+function itinerary(from, to) {
+  if (!from || !to) return '';
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}`
+    + `&destination=${encodeURIComponent(to)}&travelmode=driving`;
+  return `<a class="btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">Itinéraire et durée</a>`;
+}
 
 const stateBadge = (state) => {
   const klass = { paid: 'ok', partial: 'warn', unpaid: 'warn', overpaid: 'warn',
@@ -251,6 +265,38 @@ function paymentsBlock(booking, data) {
     </section>`;
 }
 
+/* Dire pourquoi le lien manque plutôt que de ne rien afficher : sans cela, un
+   chef qui n'a pas renseigné son adresse de départ croit la fonction absente. */
+function travelLine(booking, data) {
+  const from = data.chef_address;
+  const to = booking.address;
+  if (from && to) {
+    return `<p class="travel">${escapeHtml(to)} ${itinerary(from, to)}</p>`;
+  }
+  if (!to) return '<p class="travel muted">Aucune adresse de repas : le client ne l\'a pas renseignée.</p>';
+  return `<p class="travel muted">${escapeHtml(to)} — renseigne ton adresse de départ dans Réglages pour obtenir l\'itinéraire.</p>`;
+}
+
+export function settingsPanel() {
+  const s = billing.settings;
+  return `
+    <div class="panel">
+      <h2>Réglages</h2>
+      <p class="hint">Ce qui vous concerne, et que le site public ne montre jamais.</p>
+      <form class="formula-form" id="settings-form">
+        <label>Votre adresse de départ
+          <input name="chef_address" value="${escapeHtml(s.chef_address ?? '')}" maxlength="300"
+                 placeholder="12 rue des Olivettes, 44000 Nantes" autocomplete="street-address">
+        </label>
+        <p class="hint" style="margin:0 0 1rem">D'où vous partez pour aller cuisiner. Elle sert à
+          calculer le trajet jusqu'à chaque client, depuis la fiche de la réservation. Elle reste
+          dans votre back-office : elle n'apparaît ni sur le site, ni sur vos factures, et n'est
+          jamais communiquée à un client.</p>
+        <div class="actions"><button class="btn primary" type="submit">Enregistrer</button></div>
+      </form>
+    </div>`;
+}
+
 export function folderPanel() {
   const { booking, data } = billing.folder;
   const invoice = data.invoice;
@@ -275,6 +321,7 @@ export function folderPanel() {
           <h2>${escapeHtml(booking.name)}</h2>
           <p class="hint">${escapeHtml(longDate(booking.date))} — ${escapeHtml(SERVICE_LABEL[booking.service] ?? booking.service)}
             · ${escapeHtml(booking.guests)} couverts · ${escapeHtml(booking.formula || 'formule à définir')} · réf. ${escapeHtml(booking.ref)}</p>
+          ${travelLine(booking, data)}
         </div>
         <button class="btn" data-folder-close="1">Fermer</button>
       </div>

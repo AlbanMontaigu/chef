@@ -141,6 +141,25 @@ Un seul rendu : ce que le chef relit est exactement ce que le client reçoit.
 Pas de bibliothèque PDF — la contrainte de dépendances minimales tient, et le
 navigateur imprime en PDF.
 
+## Réglages et trajet
+
+`backend/settings.py` garde dans `meta` ce qui est **privé** et que le chef doit
+pouvoir changer seul : aujourd'hui son adresse de départ. Elle ne sort jamais
+par `/api/content` — le site public n'a aucune raison de savoir d'où part le
+chef — et n'apparaît sur aucune facture.
+
+Le back-office en tire un **lien d'itinéraire** vers l'application de cartes,
+pas un temps de trajet calculé sur place. Ce serait un appel réseau sortant
+vers un service tiers, que la contrainte 3 du projet interdit à la page et que
+la contrainte 2 rendrait coûteux côté serveur : géocoder deux adresses puis
+router, avec une clé à gérer ou un service public sans garantie, et un chemin
+d'échec de plus sur une fonction de confort. Le lien, lui, ne peut pas tomber
+en panne : c'est le chef qui clique, et son téléphone qui ouvre la navigation.
+
+Les trois cas sont rendus explicitement — trajet disponible, client sans
+adresse, chef sans adresse de départ. Un lien simplement absent laisserait
+croire que la fonction n'existe pas.
+
 ## Jeu de démonstration
 
 `backend/seed.py` remplit une base vide d'exemples qui rendent le back-office

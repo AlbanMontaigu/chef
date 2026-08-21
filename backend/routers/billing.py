@@ -26,7 +26,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, billing, config, content, db, invoice_html, mailer, money
+from .. import auth, billing, config, content, db, invoice_html, mailer, money, settings
 
 log = logging.getLogger("chef.billing.api")
 
@@ -412,3 +412,20 @@ def list_invoices(status: str = "all", limit: int = 200) -> dict:
     outstanding = sum(i["balance_cents"] for i in invoices
                       if i["status"] == "issued" and i["balance_cents"] > 0)
     return {"invoices": invoices, "outstanding_cents": outstanding}
+
+
+# --- Réglages ----------------------------------------------------------
+
+class SettingsIn(BaseModel):
+    chef_address: str = Field(default="", max_length=300)
+
+
+@router.get("/settings")
+def read_settings() -> dict:
+    return settings.all_settings()
+
+
+@router.patch("/settings")
+def write_settings(payload: SettingsIn) -> dict:
+    settings.save({"chef_address": payload.chef_address.strip()})
+    return {"updated": True}

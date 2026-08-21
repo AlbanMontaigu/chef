@@ -3,7 +3,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          todayISO, formatAmount, parseAmount, SERVICE_LABEL,
          BILLING_STATE_LABEL } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
-         captureDraft, draftPayload } from './billing.js';
+         settingsPanel, captureDraft, draftPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -13,6 +13,7 @@ const TABS = [
   ['agenda', 'Agenda'],
   ['facturation', 'Facturation'],
   ['formules', 'Formules'],
+  ['reglages', 'Réglages'],
 ];
 
 const view = {
@@ -229,6 +230,7 @@ function bookingsPanel() {
 }
 
 function tabBody() {
+  if (view.tab === 'reglages') return settingsPanel();
   if (view.tab === 'formules') return formulasPanel();
   if (view.tab === 'facturation') return invoicesPanel();
   return `<div class="admin-split">
@@ -287,6 +289,7 @@ async function refresh() {
       billing.formulas = data.formulas;
       billing.pricingKinds = data.pricing_kinds;
     }
+    if (view.tab === 'reglages') billing.settings = await api.settings();
     if (billing.folder) {
       const id = billing.folder.booking.id;
       const booking = view.bookings.find((b) => b.id === id) ?? billing.folder.booking;
@@ -393,6 +396,17 @@ app.addEventListener('submit', async (event) => {
     act(async () => {
       const res = await api.addPayment(Number(form.dataset.booking), body);
       return `Encaissement de ${formatAmount(res.amount_cents)} enregistré.`;
+    });
+    return;
+  }
+
+  if (event.target.id === 'settings-form') {
+    event.preventDefault();
+    const address = event.target.elements.chef_address.value;
+    act(async () => {
+      await api.saveSettings({ chef_address: address });
+      billing.settings.chef_address = address.trim();
+      return address.trim() ? 'Adresse de départ enregistrée.' : 'Adresse de départ effacée.';
     });
     return;
   }

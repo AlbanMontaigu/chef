@@ -27,12 +27,17 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 3
+SEED_VERSION = 4
 _MARKER = "seed_version"
 
 
 def _d(days: int) -> str:
     return (billing.today() + timedelta(days=days)).isoformat()
+
+
+# Adresse de départ du chef, fictive elle aussi. Sans elle, le lien
+# d'itinéraire ne s'affiche jamais et la fonction reste invisible dans le jeu.
+DEMO_CHEF_ADDRESS = "12 rue des Olivettes, 44000 Nantes"
 
 
 # --- Identité de démonstration ----------------------------------------
@@ -257,7 +262,10 @@ BOOKINGS = [
     {
         "key": "mail_ko", "slot": (16, "soir"), "ref": "R-QF62DA",
         "name": "Antoine Vasseur", "email": "antoine.vasseur@example.com",
-        "phone": "", "address": "Lieu-dit La Chapelle, Vertou",
+        # Ni téléphone ni adresse : le formulaire ne les exige pas, et le
+        # back-office doit rester lisible quand le client s'en tient au
+        # minimum — y compris le lien d'itinéraire, qui explique son absence.
+        "phone": "", "address": "",
         "guests": 6, "formula": "decouverte", "message": "",
         "mail": ("failed", "sent", "SMTPRecipientsRefused: 550 mailbox unavailable"),
         "payments": [],

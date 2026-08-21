@@ -8,7 +8,10 @@ créneaux et les réservations.
   disponibles, formulaire de réservation.
 - **Back-office** (`/admin`) — trois onglets : l'**agenda** (ouvrir et fermer
   les créneaux, suivre les réservations), la **facturation** (factures,
-  encaissements, soldes) et les **formules** (tarifs).
+  encaissements, soldes) et les **formules** (tarifs) et les **réglages**.
+- **Trajet** — l'adresse de départ du chef se saisit dans Réglages ; chaque
+  dossier de réservation propose alors l'itinéraire jusqu'au client. Elle reste
+  privée : ni sur le site, ni sur les factures.
 - **Facturation** — un brouillon se prépare depuis une réservation, s'émet avec
   un numéro séquentiel définitif, s'imprime et s'envoie au client. Les
   encaissements se saisissent au fil de l'eau ; le solde est toujours leur

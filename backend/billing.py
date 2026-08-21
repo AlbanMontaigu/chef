@@ -16,7 +16,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-from . import config, content, money
+from . import config, content, money, settings
 
 log = logging.getLogger("chef.billing")
 
@@ -286,6 +286,10 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
     paid = paid_cents(conn, booking["id"])
     due = invoice_total(conn, invoice) if invoice and invoice["status"] == "issued" else None
     return {
+        # L'adresse de départ accompagne le dossier : le back-office en a
+        # besoin pour proposer l'itinéraire, et la refaire chercher par un
+        # second appel ferait clignoter le lien après coup.
+        "chef_address": settings.chef_address(),
         "estimate_cents": estimate,
         "paid_cents": paid,
         "due_cents": due,

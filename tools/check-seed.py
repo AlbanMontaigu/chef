@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, seed  # noqa: E402  (l'env doit précéder l'import)
+from backend import billing, db, seed, settings  # noqa: E402  (l'env doit précéder l'import)
 
 
 def _load() -> dict:
@@ -136,6 +136,12 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("identité vendeur de démonstration renseignée",
          all(billing.seller_identity().get(k) for k in
              ("name", "address", "siret", "iban", "payment_terms"))),
+        ("adresse de départ du chef renseignée (lien d'itinéraire visible)",
+         bool(settings.chef_address())),
+        ("réservation avec adresse de repas, pour l'itinéraire",
+         any(b["address"] for b in bookings)),
+        ("réservation sans adresse de repas",
+         any(not b["address"] for b in bookings)),
     ]
 
 
