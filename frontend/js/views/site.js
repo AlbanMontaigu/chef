@@ -23,13 +23,27 @@ function topbar(content) {
     </div>`;
 }
 
+const EYEBROW = 'Chef à domicile';
+
+/* Le macaron dit le MÉTIER, le titre dit le NOM : « ● Chef à domicile » puis
+   « Camille Rousseau ». Tant que le nom n'a pas été renseigné, il vaut le
+   placeholder « Chef à domicile » et les deux disent la même chose — le
+   macaron devient alors une répétition, pas une précision. Il s'efface donc
+   de lui-même dans ce cas, et reparaît dès que le vrai nom est posé. Comparé
+   sans casse ni accents : « CHEF A DOMICILE » est le même doublon. */
+function eyebrowNeeded(name) {
+  const flatten = (t) => String(t ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+  return flatten(name) !== flatten(EYEBROW);
+}
+
 function hero(content) {
   const initial = (content.name || 'C').trim().charAt(0).toUpperCase();
   return `
     <header class="hero" id="top">
       <div class="wrap hero-grid">
         <div>
-          <p class="eyebrow">Chef à domicile</p>
+          ${eyebrowNeeded(content.name) ? `<p class="eyebrow">${escapeHtml(EYEBROW)}</p>` : ''}
           <h1>${escapeHtml(content.name)}</h1>
           <p class="tagline">${escapeHtml(content.tagline)}</p>
           ${content.intro ? `<p class="intro">${escapeHtml(content.intro)}</p>` : ''}
