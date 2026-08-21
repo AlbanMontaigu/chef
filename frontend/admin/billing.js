@@ -81,14 +81,19 @@ export function formulasPanel() {
   const rows = billing.formulas.map((f) => {
     if (billing.editingFormula === f.id) return `<div class="formula-row editing">${formulaForm(f)}</div>`;
     const off = f.active ? '' : ' <span class="badge neutral">retirée du site</span>';
+    // Réglée « par convive » ou « forfait » mais sans montant : le site
+    // l'affiche « sur devis ». Le dire, plutôt que de laisser le chef croire
+    // qu'un tarif est posé — et plutôt que d'afficher « 0,00 € ».
+    const noPrice = f.pricing !== 'quote' && f.price_cents <= 0
+      ? ' <span class="badge warn">tarif non renseigné</span>' : '';
     // Une formule déjà choisie par un client ne propose pas « supprimer » :
     // le bouton n'existe pas plutôt que d'échouer une fois cliqué.
     const remove = f.in_use ? '' : `<button class="btn danger" data-formula-delete="${f.id}">Supprimer</button>`;
     return `
       <div class="formula-row">
         <div>
-          <strong>${escapeHtml(f.name)}</strong>${off}
-          <p class="meta">${escapeHtml(f.price_label)} · ${escapeHtml(f.pricing_label)}${f.min_guests ? ` · dès ${escapeHtml(f.min_guests)} convives` : ''}</p>
+          <strong>${escapeHtml(f.name)}</strong>${off}${noPrice}
+          <p class="meta">${escapeHtml(f.price_label)}${f.min_guests ? ` · dès ${escapeHtml(f.min_guests)} convives` : ''}</p>
           ${f.description ? `<p class="quote">${escapeHtml(f.description)}</p>` : ''}
         </div>
         <div class="actions">

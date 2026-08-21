@@ -80,9 +80,11 @@ def list_formulas() -> dict:
         }
     return {
         "formulas": [
+            # `price_label` encode déjà le mode de tarification (« / personne »,
+            # « (forfait) », « sur devis ») : un libellé de mode en plus était
+            # redondant, et donnait « sur devis · sur devis ».
             {**row,
              "price_label": billing.price_label(row),
-             "pricing_label": billing.PRICING_LABEL.get(row["pricing"], row["pricing"]),
              # Une formule déjà choisie par un client ne se supprime pas : le
              # back-office doit le savoir avant de proposer le bouton.
              "in_use": row["id"] in used}
