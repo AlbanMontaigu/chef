@@ -8,6 +8,7 @@ written back onto the booking row and surfaced in the back-office.
 
 import logging
 import smtplib
+from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
@@ -26,7 +27,11 @@ def _send(to: str, subject: str, body: str, reply_to: str = "") -> tuple[str, st
     if not to:
         return "failed", "destinataire vide"
 
-    msg = EmailMessage()
+    # max_line_length large : par défaut (78) un sujet accentué est découpé en
+    # deux mots encodés, et Gmail rend alors une espace en trop au point de
+    # coupure -- constaté sur un envoi réel. Un seul fragment supprime la cause.
+    # Raccourcir le sujet ne suffisait pas : le découpage vient des accents.
+    msg = EmailMessage(policy=policy.SMTP.clone(max_line_length=900))
     msg["From"] = formataddr((config.MAIL_FROM_NAME or None, config.MAIL_FROM))
     msg["To"] = to
     msg["Subject"] = subject
@@ -49,6 +54,18 @@ def _send(to: str, subject: str, body: str, reply_to: str = "") -> tuple[str, st
 
     log.info("mail sent to %s (%s)", to, subject)
     return "sent", ""
+
+
+def _short_date(iso_date: str) -> str:
+    """Date courte pour les sujets. Un sujet long est replié par l'encodeur
+    d'en-tête MIME, ce qui insère une espace parasite au point de coupure --
+    et se lit mal dans une liste de messages sur téléphone."""
+    from datetime import date
+
+    months = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+              "août", "septembre", "octobre", "novembre", "décembre"]
+    d = date.fromisoformat(iso_date)
+    return f"{d.day} {months[d.month - 1]}"
 
 
 def _pretty_date(iso_date: str) -> str:
@@ -123,7 +140,7 @@ def send_client_confirmation(booking: dict, site_name: str) -> tuple[str, str]:
     service = SERVICE_LABEL.get(booking["service"], booking["service"])
     return _send(
         booking["email"],
-        f"Réservation confirmée — {_pretty_date(booking['date'])} ({service})",
+        f"Réservation confirmée — {_short_date(booking['date'])} ({service})",
         _client_body(booking, site_name),
         reply_to=config.MAIL_TO or "",
     )
@@ -133,7 +150,7 @@ def send_chef_notification(booking: dict) -> tuple[str, str]:
     service = SERVICE_LABEL.get(booking["service"], booking["service"])
     return _send(
         config.MAIL_TO,
-        f"[Réservation] {booking['name']} — {booking['date']} {service} — {booking['guests']} couverts",
+        f"[Réservation] {_short_date(booking['date'])} {service} — {booking['name']}, {booking['guests']} couverts",
         _chef_body(booking),
         reply_to=booking["email"],
     )
