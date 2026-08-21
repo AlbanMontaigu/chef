@@ -22,6 +22,8 @@ export const api = {
   updateFormula: (id, body) => request(`/api/admin/formulas/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteFormula: (id) => request(`/api/admin/formulas/${id}`, { method: 'DELETE' }),
   invoices: () => request('/api/admin/invoices'),
+  saveMenu: (bookingId, body) => request(`/api/admin/bookings/${bookingId}/menu`, { method: 'PUT', body: JSON.stringify(body) }),
+  sendMenu: (bookingId) => request(`/api/admin/bookings/${bookingId}/menu/send`, { method: 'POST' }),
   folder: (bookingId) => request(`/api/admin/bookings/${bookingId}/billing`),
   addPayment: (bookingId, body) => request(`/api/admin/bookings/${bookingId}/payments`, { method: 'POST', body: JSON.stringify(body) }),
   deletePayment: (id) => request(`/api/admin/payments/${id}`, { method: 'DELETE' }),
@@ -423,9 +425,94 @@ export function folderPanel() {
         </div>
         <button class="btn" data-folder-close="1">Fermer</button>
       </div>
+      ${menuBlock(booking, data)}
       <section class="folder-section"><h3>Facture</h3>${invoiceBlock}</section>
       ${paymentsBlock(booking, data)}
     </div>`;
+}
+
+// --- Menu ----------------------------------------------------------------
+
+/* Composé ici et nulle part ailleurs. Le menu est la seule chose de ce dossier
+   qui parle de cuisine plutôt que d'argent, et c'est le cœur du métier : il
+   passe donc AVANT la facture dans la page. */
+
+function menuMailBadge(menu) {
+  if (menu.status !== 'sent') return '';
+  if (menu.mail_status === 'sent') return '<span class="badge ok">envoyé au client</span>';
+  if (menu.mail_status === 'failed') {
+    return `<span class="badge bad">envoi en échec</span> <span class="hint" style="margin:0">${escapeHtml(menu.mail_error ?? '')}</span>`;
+  }
+  if (menu.mail_status === 'disabled') return '<span class="badge warn">envoi désactivé</span>';
+  return '<span class="badge neutral">envoi en cours…</span>';
+}
+
+function menuBlock(booking, data) {
+  const menu = data.menu ?? { title: '', note: '', lines: [], status: 'draft', editable: true };
+  const courses = (data.courses ?? []).map((c) => `<option value="${escapeHtml(c)}">`).join('');
+  const lines = (menu.lines.length ? menu.lines : [{ course: '', dish: '' }]).map((l, i) => `
+    <div class="menu-row" data-menu-line="${i}">
+      <input name="course" value="${escapeHtml(l.course)}" maxlength="60" list="menu-courses"
+             placeholder="Entrée" aria-label="Service">
+      <input name="dish" value="${escapeHtml(l.dish)}" maxlength="300"
+             placeholder="Velouté de potimarron, huile de noisette" aria-label="Plat">
+      <button class="btn danger" type="button" data-menu-remove="${i}" aria-label="Retirer la ligne">×</button>
+    </div>`).join('');
+
+  // Le menu envoyé reste éditable, mais le dire : le client a reçu une
+  // version, et une modification ne vaut que renvoyée.
+  const warn = menu.status === 'sent'
+    ? `<p class="hint">Ce menu a été envoyé${menu.sent_at ? ` le ${escapeHtml(longDate(menu.sent_at.slice(0, 10)))}` : ''}.
+       Le modifier le repasse en brouillon : votre client connaît l'ancienne version tant que
+       vous ne lui renvoyez pas la nouvelle.</p>`
+    : '<p class="hint">Brouillon : rien n\'est parti, votre client ne voit rien.</p>';
+
+  return `
+    <section class="folder-section">
+      <h3>Menu</h3>
+      ${warn}
+      <datalist id="menu-courses">${courses}</datalist>
+      <form class="draft" id="menu-form" data-booking="${booking.id}">
+        <label>Titre <span class="opt">facultatif</span>
+          <input name="title" value="${escapeHtml(menu.title ?? '')}" maxlength="160"
+                 placeholder="Menu d'automne, autour du gibier"></label>
+        <div class="menu-lines-edit">${lines}</div>
+        <div class="actions">
+          <button class="btn" type="button" data-menu-add="1">Ajouter un plat</button>
+        </div>
+        <label>Un mot pour accompagner <span class="opt">lu par le client</span>
+          <input name="note" value="${escapeHtml(menu.note ?? '')}" maxlength="1000"
+                 placeholder="Le poisson dépendra de la criée du matin."></label>
+        <div class="actions">
+          <button class="btn" type="submit">Enregistrer le menu</button>
+          <button class="btn primary" type="button" data-menu-send="${booking.id}">Envoyer au client</button>
+          ${menuMailBadge(menu)}
+        </div>
+      </form>
+    </section>`;
+}
+
+/* Même raison que pour le brouillon de facture : admin.js réécrit tout le DOM
+   à chaque rendu, donc les lignes en cours de saisie sont relues dans l'état
+   avant tout re-rendu déclenché depuis l'éditeur. */
+export function captureMenu() {
+  const form = document.getElementById('menu-form');
+  const data = billing.folder?.data;
+  if (!form || !data) return;
+  data.menu = {
+    ...(data.menu ?? { status: 'draft', editable: true, mail_status: 'pending' }),
+    title: form.elements.title.value,
+    note: form.elements.note.value,
+    lines: [...form.querySelectorAll('.menu-row')].map((el) => ({
+      course: el.querySelector('[name=course]').value,
+      dish: el.querySelector('[name=dish]').value,
+    })),
+  };
+}
+
+export function menuPayload() {
+  const m = billing.folder.data.menu;
+  return { title: m.title ?? '', note: m.note ?? '', lines: m.lines ?? [] };
 }
 
 // --- Capture avant re-rendu ---------------------------------------------

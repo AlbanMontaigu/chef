@@ -21,13 +21,13 @@ import json
 import logging
 from datetime import date, timedelta
 
-from . import billing, config, db, diets
+from . import billing, config, db, diets, menus
 
 log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 12
+SEED_VERSION = 13
 _MARKER = "seed_version"
 
 
@@ -470,6 +470,60 @@ BOOKINGS = [
 ]
 
 
+# Menus. Trois états, parce que trois choses différentes : aucun menu (le cas
+# de départ, et celui de la plupart des réservations), un brouillon que le chef
+# travaille encore, et un menu envoyé — le seul que le client voit.
+MENUS = [
+    # (clé de réservation, titre, [(service, plat)], mot d'accompagnement,
+    #  statut, issue de l'envoi)
+    ("soldee", "Menu Signature — automne", [
+        ("Apéritif", "Gougères au comté, radis beurre d'algues"),
+        ("Entrée", "Velouté de potimarron, huile de noisette torréfiée"),
+        ("Poisson", "Dos de lieu jaune, beurre blanc nantais, poireaux grillés"),
+        ("Plat", "Pigeon rôti, purée de céleri, jus au cassis"),
+        ("Fromage", "Trois chèvres de la vallée du Layon"),
+        ("Dessert", "Tarte fine aux pommes, glace au lait ribot"),
+    ], "Pas de crustacés au menu, comme convenu. Le poisson dépendra de la criée.",
+     "sent", "sent"),
+    # Envoyé mais l'e-mail n'est jamais parti : le chef croit son client au
+    # courant, et il ne l'est pas. C'est l'état à voir tout de suite.
+    ("acompte", "Déjeuner d'anniversaire", [
+        ("Entrée", "Œuf parfait, mousseline de panais, chips de lard"),
+        ("Plat", "Épaule d'agneau confite sept heures, haricots coco"),
+        ("Dessert", "Paris-Brest revisité"),
+    ], "", "sent", "failed"),
+    # Brouillon en cours : le chef hésite encore, le client ne voit rien.
+    ("brouillon", "", [
+        ("Entrée", "Tartare de dorade, agrumes, aneth"),
+        ("Plat", "Volaille de Challans, morilles"),
+        ("Dessert", ""),
+    ], "", "draft", "pending"),
+    # Menu sans service nommé : un plat unique, servi en cocotte au centre de
+    # la table. Le formulaire ne doit pas imposer « entrée / plat / dessert ».
+    ("duo", "", [
+        ("", "Pot-au-feu de joue de bœuf, légumes d'hiver, os à moelle"),
+        ("", "Riz au lait, caramel au beurre salé"),
+    ], "Servi en cocotte, au centre de la table.", "sent", "sent"),
+]
+
+
+def _insert_menus(conn, booking_ids: dict, now: str) -> None:
+    for key, title, lines, note, status, mail in MENUS:
+        booking_id = booking_ids.get(key)
+        if booking_id is None:
+            log.error("menu de démonstration sans réservation %r", key)
+            continue
+        clean = menus.normalise([{"course": c, "dish": d} for c, d in lines])
+        conn.execute(
+            """INSERT INTO menus (booking_id, title, lines, note, status, created_at,
+                                  sent_at, mail_status, mail_error)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (booking_id, title, menus.dumps(clean), note, status, now,
+             now if status == "sent" else None, mail,
+             "SMTPRecipientsRefused: 550 mailbox unavailable" if mail == "failed" else ""),
+        )
+
+
 # Demandes de devis. Elles couvrent les quatre états et, surtout, les trois
 # formes que prend une date dans une demande : précise, floue, absente. C'est
 # la variable qui change le plus le travail du chef, et celle qu'un jeu naïf
@@ -710,6 +764,7 @@ def _insert(conn) -> None:
 
     _insert_reminders(conn, booking_ids, invoice_ids, now)
     _insert_quotes(conn, formula_ids, formula_names, now)
+    _insert_menus(conn, booking_ids, now)
 
 
 def _insert_invoice(conn, booking: dict, slot_date: str, spec: dict, status: str,

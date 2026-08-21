@@ -84,6 +84,11 @@ def _view(booking: dict) -> dict:
         invoice = billing.live_invoice(conn, booking["id"])
         paid = billing.paid_cents(conn, booking["id"])
         cancellation = _cancellation(conn, booking)
+        # Seulement une fois envoyé : un brouillon n'existe que pour le chef,
+        # et le client découvrirait un menu que personne ne lui a présenté.
+        menu = billing.menu_view(conn, booking["id"])
+        if menu is not None and menu["status"] != "sent":
+            menu = None
         invoice_view = None
         if invoice and invoice["status"] == "issued":
             total = int(invoice["total_cents"])
@@ -117,6 +122,8 @@ def _view(booking: dict) -> dict:
         "paid_cents": paid,
         "paid": money.format_amount(paid),
         "invoice": invoice_view,
+        "menu": {"title": menu["title"], "lines": menu["lines"],
+                 "note": menu["note"], "sent_at": menu["sent_at"]} if menu else None,
         "cancellation": cancellation,
         "contact": site.get("contact") or {},
         "cancelled_at": booking["cancelled_at"],

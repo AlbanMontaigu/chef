@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, diets, reminders, seed, settings
+from backend import billing, db, diets, menus, reminders, seed, settings
 from backend.routers import client
 from backend.routers.billing import SettingsIn  # noqa: E402  (l'env doit précéder l'import)
 
@@ -44,6 +44,7 @@ def _load() -> dict:
             "payments": [dict(r) for r in conn.execute("SELECT * FROM payments")],
             "invoices": [dict(r) for r in conn.execute("SELECT * FROM invoices")],
             "quotes": [dict(r) for r in conn.execute("SELECT * FROM quotes")],
+            "menus": [dict(r) for r in conn.execute("SELECT * FROM menus")],
         }
         data["states"] = {}
         for booking in data["bookings"]:
@@ -184,6 +185,26 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("envoi de facture réussi", any(i["mail_status"] == "sent" for i in issued)),
         ("envoi de facture en échec",
          any(i["mail_status"] == "failed" and i["mail_error"] for i in issued)),
+
+        # --- Menus
+        ("menu envoyé au client", any(m["status"] == "sent" for m in d["menus"])),
+        ("menu encore en brouillon", any(m["status"] == "draft" for m in d["menus"])),
+        ("menu dont l'envoi a échoué",
+         any(m["mail_status"] == "failed" and m["mail_error"] for m in d["menus"])),
+        ("menu portant un titre", any(m["title"] for m in d["menus"])),
+        ("menu sans titre", any(not m["title"] for m in d["menus"])),
+        ("menu avec un mot d'accompagnement", any(m["note"] for m in d["menus"])),
+        ("menu à services nommés (entrée, plat, dessert…)",
+         any(all(l["course"] for l in menus.loads(m["lines"])) for m in d["menus"])),
+        ("menu sans service nommé (plat unique en cocotte)",
+         any(menus.loads(m["lines"]) and not any(l["course"] for l in menus.loads(m["lines"]))
+             for m in d["menus"])),
+        ("réservation sans aucun menu",
+         any(not any(m["booking_id"] == b["id"] for m in d["menus"]) for b in bookings)),
+        ("aucune ligne de menu sans plat (les vides sont jetées)",
+         all(l["dish"].strip() for m in d["menus"] for l in menus.loads(m["lines"]))),
+        ("au plus un menu par réservation",
+         len({m["booking_id"] for m in d["menus"]}) == len(d["menus"])),
 
         # --- Demandes de devis
         *[(f"devis au statut « {label} »",

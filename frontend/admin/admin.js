@@ -4,7 +4,7 @@ import { escapeHtml, longDate, monthLabel, isoOf, daysInMonth, weekdayIndex,
          BILLING_STATE_LABEL, dietBadges } from '../js/util.js';
 import { api as billingApi, billing, formulasPanel, invoicesPanel, folderPanel,
          settingsPanel, remindersPanel, quotesPanel, travelBadge, captureDraft,
-         draftPayload } from './billing.js';
+         draftPayload, captureMenu, menuPayload } from './billing.js';
 
 const app = document.getElementById('app');
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -396,6 +396,20 @@ app.addEventListener('submit', async (event) => {
     return;
   }
 
+  if (event.target.id === 'menu-form') {
+    event.preventDefault();
+    captureMenu();
+    const id = Number(event.target.dataset.booking);
+    act(async () => {
+      const r = await api.saveMenu(id, menuPayload());
+      // Le nombre de plats retenus est renvoyé : les lignes vides sont jetées
+      // côté serveur, et « enregistré » sans compte laisserait croire qu'une
+      // ligne oubliée est partie avec.
+      return `Menu enregistré (${r.lines} plat${r.lines > 1 ? 's' : ''}).`;
+    });
+    return;
+  }
+
   if (event.target.id === 'payment-form') {
     event.preventDefault();
     const form = event.target;
@@ -544,6 +558,41 @@ app.addEventListener('click', (event) => {
     // un éditeur vide n'offre plus aucune prise pour repartir.
     if (lines.length > 1) lines.splice(Number(removeLine.dataset.lineRemove), 1);
     render();
+    return;
+  }
+
+  const menuAdd = event.target.closest('[data-menu-add]');
+  if (menuAdd) {
+    captureMenu();
+    billing.folder.data.menu.lines.push({ course: '', dish: '' });
+    render();
+    return;
+  }
+
+  const menuRemove = event.target.closest('[data-menu-remove]');
+  if (menuRemove) {
+    captureMenu();
+    const lines = billing.folder.data.menu.lines;
+    // Toujours au moins une ligne, comme pour la facture : un éditeur vide
+    // n'offre plus aucune prise pour repartir.
+    if (lines.length > 1) lines.splice(Number(menuRemove.dataset.menuRemove), 1);
+    else lines[0] = { course: '', dish: '' };
+    render();
+    return;
+  }
+
+  const menuSend = event.target.closest('[data-menu-send]');
+  if (menuSend) {
+    captureMenu();
+    const id = Number(menuSend.dataset.menuSend);
+    if (!confirm('Envoyer ce menu au client ?\n\nIl le recevra par e-mail et le verra sur sa page.')) return;
+    act(async () => {
+      // Enregistrer avant d'envoyer : sinon on expédierait la version d'avant
+      // la dernière frappe, sans que rien ne le signale.
+      await api.saveMenu(id, menuPayload());
+      await api.sendMenu(id);
+      return 'Menu envoyé. Il apparaît maintenant sur la page du client.';
+    });
     return;
   }
 

@@ -26,7 +26,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
-from .. import auth, billing, config, content, db, invoice_html, mailer, money, settings, travel
+from .. import (auth, billing, config, content, db, invoice_html, mailer, menus,
+                money, settings, travel)
 
 log = logging.getLogger("chef.billing.api")
 
@@ -534,3 +535,78 @@ def write_settings(payload: SettingsIn) -> dict:
               for k, v in payload.model_dump().items()}
     settings.save(values)
     return {"updated": True, "settings": settings.all_settings()}
+
+
+# --- Menus -------------------------------------------------------------
+
+class MenuLineIn(BaseModel):
+    course: str = Field(default="", max_length=60)
+    dish: str = Field(default="", max_length=300)
+
+
+class MenuIn(BaseModel):
+    title: str = Field(default="", max_length=160)
+    note: str = Field(default="", max_length=1000)
+    lines: list[MenuLineIn] = Field(default_factory=list, max_length=menus.MAX_LINES)
+
+
+def _menu_row(conn, booking_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM menus WHERE booking_id = ?", (booking_id,)).fetchone()
+    return dict(row) if row else None
+
+
+@router.put("/bookings/{booking_id}/menu")
+def save_menu(booking_id: int, payload: MenuIn) -> dict:
+    """Crée ou remplace le brouillon de menu d'une réservation.
+
+    Un menu déjà envoyé se réécrit, mais retombe en brouillon : le client a
+    reçu une version, la nouvelle ne vaut que si elle lui est renvoyée. Le
+    laisser « envoyé » avec un contenu différent ferait croire au chef que son
+    client connaît un menu qu'il n'a jamais vu.
+    """
+    lines = menus.normalise([line.model_dump() for line in payload.lines])
+    now = billing.now_iso()
+    with db.transaction() as conn:
+        if conn.execute("SELECT 1 FROM bookings WHERE id = ?", (booking_id,)).fetchone() is None:
+            raise HTTPException(404, "Réservation introuvable.")
+        conn.execute(
+            """INSERT INTO menus (booking_id, title, lines, note, status, created_at)
+               VALUES (?, ?, ?, ?, 'draft', ?)
+               ON CONFLICT (booking_id) DO UPDATE SET
+                   title = excluded.title, lines = excluded.lines,
+                   note = excluded.note, status = 'draft'""",
+            (booking_id, payload.title, menus.dumps(lines), payload.note, now),
+        )
+    return {"saved": True, "lines": len(lines)}
+
+
+@router.post("/bookings/{booking_id}/menu/send")
+def send_menu(booking_id: int, background: BackgroundTasks) -> dict:
+    """Envoie le menu au client et le rend visible sur sa page.
+
+    Un menu vide ne part pas : un e-mail intitulé « votre menu » sans un seul
+    plat inquiète plus qu'il ne renseigne.
+    """
+    if not config.mail_enabled():
+        raise HTTPException(503, "Envoi d'e-mails désactivé (SMTP_HOST non configuré).")
+    now = billing.now_iso()
+    with db.transaction() as conn:
+        row = conn.execute(
+            """SELECT b.*, s.date, s.service FROM bookings b
+               JOIN slots s ON s.id = b.slot_id WHERE b.id = ?""",
+            (booking_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Réservation introuvable.")
+        if row["status"] != "confirmed":
+            raise HTTPException(409, "Réservation annulée : le menu n'a plus de destinataire.")
+        menu = _menu_row(conn, booking_id)
+        if menu is None or not menus.loads(menu["lines"]):
+            raise HTTPException(422, "Ce menu est vide : ajoutez au moins un plat.")
+        conn.execute(
+            "UPDATE menus SET status = 'sent', sent_at = ? WHERE booking_id = ?",
+            (now, booking_id),
+        )
+    menu = {**menu, "lines": menus.loads(menu["lines"])}
+    background.add_task(mailer.send_menu, dict(row), menu, content.site_name())
+    return {"queued": row["ref"]}

@@ -13,7 +13,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
-from . import config, db, diets, money
+from . import config, db, diets, menus, money
 
 log = logging.getLogger("chef.mail")
 
@@ -342,6 +342,19 @@ def _invoice_body(invoice: dict, site_name: str) -> str:
 # confirmation initiale, et les écraser effacerait la trace de ce qui s'est
 # passé le jour de la réservation. Leur résultat vit sur la ligne de rappel.
 
+def _menu_recap(booking: dict) -> str:
+    """Le menu, repris dans le rappel — seulement s'il a été envoyé.
+
+    Un menu encore en brouillon n'a pas à fuiter par ce chemin : le chef ne l'a
+    pas validé, et le client le découvrirait dans un rappel au lieu du message
+    qui le lui présente.
+    """
+    lines = booking.get("menu_lines") or []
+    if not lines:
+        return ""
+    return "Pour mémoire, le menu convenu :\n\n" + menus.text_block(lines) + "\n\n"
+
+
 def send_meal_reminder(booking: dict, site_name: str) -> tuple[str, str]:
     """Rappel au client, quelques jours avant le repas.
 
@@ -359,6 +372,7 @@ def send_meal_reminder(booking: dict, site_name: str) -> tuple[str, str]:
         f"{_diet_block(booking)}"
         f"  Lieu       : {_address(booking)}\n"
         f"  Référence  : {booking['ref']}\n\n"
+        f"{_menu_recap(booking)}"
         f"Si quelque chose a changé — le nombre de convives, une allergie, "
         f"l'adresse — répondez à cet e-mail : il est encore temps, après il "
         f"sera trop tard pour les courses.\n\n"
@@ -499,4 +513,40 @@ def notify_chef_quote(quote: dict, ref: str, client_status: str, client_error: s
         conn.execute(
             "UPDATE quotes SET mail_client = ?, mail_chef = ?, mail_error = ? WHERE ref = ?",
             (client_status, chef_status, error[:500], ref),
+        )
+
+
+# --- Menu --------------------------------------------------------------
+
+def send_menu(booking: dict, menu: dict, site_name: str) -> None:
+    """Envoie le menu composé pour ce repas, et inscrit le résultat.
+
+    Le résultat vit sur le menu, pas sur la réservation : les colonnes `mail_*`
+    de celle-ci décrivent la confirmation initiale. Un menu qu'on croit parti
+    et un menu parti se distinguent sinon par rien -- et le client arriverait
+    à table sans savoir ce qu'il mange.
+    """
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    title = menu.get("title") or "Votre menu"
+    note = f"\n{menu['note']}\n" if menu.get("note") else ""
+    body = (
+        f"Bonjour {booking['name']},\n\n"
+        f"Voici ce que je vous propose pour le {_pretty_date(booking['date'])} "
+        f"({service}), {booking['guests']} convives.\n\n"
+        f"  {title}\n\n"
+        f"{menus.text_block(menu['lines'])}\n"
+        f"{note}\n"
+        f"{_diet_block(booking)}"
+        f"\nJ'ai construit ce menu sur les contraintes ci-dessus : si l'une "
+        f"manque ou a changé, dites-le moi maintenant.\n\n"
+        + (f"Votre page de suivi : {follow_url(booking)}\n\n" if follow_url(booking) else "")
+        + f"À très vite,\n{site_name}\n"
+    )
+    status, err = _send(booking["email"],
+                        f"Votre menu — {_short_date(booking['date'])} ({service})",
+                        body, reply_to=config.MAIL_TO or "")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE menus SET mail_status = ?, mail_error = ? WHERE booking_id = ?",
+            (status, err[:500], booking["id"]),
         )

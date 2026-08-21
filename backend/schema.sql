@@ -262,3 +262,26 @@ CREATE TABLE IF NOT EXISTS quotes (
 );
 
 CREATE INDEX IF NOT EXISTS quotes_by_status ON quotes (status, created_at DESC);
+
+-- --------------------------------------------------------------------
+-- Menus. Une formule est un cadre et un tarif ; le menu est ce qui sera dans
+-- l'assiette ce soir-là, composé après avoir parlé au client. Un menu
+-- appartient à UNE réservation et ne se réutilise pas : recyclé d'un client
+-- à l'autre, ce serait un catalogue, pas un menu. Cf. backend/menus.py.
+CREATE TABLE IF NOT EXISTS menus (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id  INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL DEFAULT '',
+    -- [{"course": "Entrée", "dish": "Velouté de potimarron"}] -- les services
+    -- sont libres : un plat unique en cocotte et un menu à sept services
+    -- vivent dans la même colonne.
+    lines       TEXT NOT NULL DEFAULT '[]',
+    -- 'draft' = n'existe que pour le chef ; 'sent' = parti au client et
+    -- visible sur sa page. Le passage de l'un à l'autre est un engagement.
+    status      TEXT NOT NULL DEFAULT 'draft',
+    note        TEXT NOT NULL DEFAULT '',   -- mot d'accompagnement, lu par le client
+    created_at  TEXT NOT NULL,
+    sent_at     TEXT,
+    mail_status TEXT NOT NULL DEFAULT 'pending',  -- pending|sent|failed|disabled
+    mail_error  TEXT NOT NULL DEFAULT ''
+);

@@ -188,6 +188,11 @@ def _context(conn, kind: str, target: str) -> tuple[dict | None, str]:
         if kind == "repas_proche":
             if booking["date"] < billing.today().isoformat():
                 return None, "le repas a déjà eu lieu"
+            menu = billing.menu_view(conn, booking["id"])
+            # Seulement s'il est parti : un brouillon n'a pas à fuiter par le
+            # rappel, le chef ne l'a pas validé.
+            if menu and menu["status"] == "sent":
+                booking["menu_lines"] = menu["lines"]
             return {"booking": booking}, ""
         # a_facturer : le chef a pu facturer entre-temps.
         live = billing.live_invoice(conn, booking["id"])

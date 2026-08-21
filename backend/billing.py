@@ -16,7 +16,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-from . import config, content, diets, money, settings, travel
+from . import config, content, diets, menus, money, settings, travel
 
 log = logging.getLogger("chef.billing")
 
@@ -316,7 +316,20 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         "state": payment_state(due, paid),
         "payments": payments_of(conn, booking["id"]),
         "invoice": _invoice_view(conn, invoice) if invoice else None,
+        "menu": menu_view(conn, booking["id"]),
+        "courses": list(menus.COMMON_COURSES),
     }
+
+
+def menu_view(conn: sqlite3.Connection, booking_id: int) -> dict | None:
+    """Menu d'une réservation, tel que le back-office et la page client le
+    lisent. Défini ici plutôt que dans le routeur : les deux s'en servent, et
+    deux lectures d'une même table finissent par diverger."""
+    row = conn.execute("SELECT * FROM menus WHERE booking_id = ?", (booking_id,)).fetchone()
+    if row is None:
+        return None
+    return {**dict(row), "lines": menus.loads(row["lines"]),
+            "editable": row["status"] == "draft"}
 
 
 def travel_view(booking: dict) -> dict:

@@ -52,6 +52,27 @@ function details(d) {
     </section>`;
 }
 
+/* Le menu, tel que le chef l'a envoyé. Absent tant qu'il ne l'a pas envoyé :
+   un brouillon n'existe que pour lui, et le client découvrirait un menu que
+   personne ne lui a présenté. */
+function menuPanel(d) {
+  const m = d.menu;
+  if (!m) return '';
+  const lines = m.lines.map((l) => `
+    <div class="menu-line">
+      ${l.course ? `<span class="menu-course">${escapeHtml(l.course)}</span>` : '<span></span>'}
+      <span class="menu-dish">${escapeHtml(l.dish)}</span>
+    </div>`).join('');
+  return `
+    <section class="panel menu-card">
+      <h2>${escapeHtml(m.title || 'Votre menu')}</h2>
+      <div class="menu-lines">${lines}</div>
+      ${m.note ? `<p class="quote">${escapeHtml(m.note)}</p>` : ''}
+      <p class="hint">Une envie, une réserve, un convive de plus ? Répondez à l'e-mail :
+        tant que les courses ne sont pas faites, tout est encore possible.</p>
+    </section>`;
+}
+
 /* L'argent n'est affiché que quand il y a quelque chose à en dire. Une section
    « 0 € » sur une réservation jamais facturée invente une créance. */
 function moneyPanel(d) {
@@ -122,6 +143,7 @@ function render() {
     ${state.flash ? `<p class="flash">${escapeHtml(state.flash)}</p>` : ''}
     ${state.error ? `<p class="error" role="alert">${escapeHtml(state.error)}</p>` : ''}
     ${details(d)}
+    ${menuPanel(d)}
     ${moneyPanel(d)}
     ${cancelPanel(d)}
     <p class="build"><a href="/">Retour au site</a></p>
