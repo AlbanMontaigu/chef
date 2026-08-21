@@ -5,12 +5,14 @@ served as a separate page rather than a route of the public SPA so that a
 visitor never downloads the back-office at all.
 """
 
+import hashlib
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
@@ -25,12 +27,41 @@ log = logging.getLogger("chef")
 
 FRONTEND = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 
+# Empreinte du frontend, recalculée à chaque démarrage donc à chaque
+# déploiement. Elle sert de segment d'URL pour le code servi.
+def _build_id() -> str:
+    digest = hashlib.sha256()
+    for root, _, files in sorted(os.walk(FRONTEND)):
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            digest.update(name.encode())
+            try:
+                with open(path, "rb") as fh:
+                    digest.update(fh.read())
+            except OSError:
+                continue
+    return digest.hexdigest()[:10]
+
+
+BUILD_ID = _build_id()
+
+# Réécrit les URL du code vers /v/<build>/… Les imports relatifs à l'intérieur
+# des modules suivent automatiquement : `../js/util.js` depuis
+# /v/<build>/admin/admin.js résout vers /v/<build>/js/util.js.
+_ASSET_RE = re.compile(r'(href|src)="/(css|js|admin)/')
+
+
+def _page(filename: str) -> str:
+    with open(os.path.join(FRONTEND, filename), encoding="utf-8") as fh:
+        html = fh.read()
+    return _ASSET_RE.sub(rf'\1="/v/{BUILD_ID}/\2/', html)
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init()
     site = content.load(force=True)
-    log.info("started - site=%r mail=%s admin=%s",
-             site.get("name"), config.mail_enabled(), bool(config.ADMIN_PASSWORD))
+    log.info("started - site=%r build=%s mail=%s admin=%s",
+             site.get("name"), BUILD_ID, config.mail_enabled(), bool(config.ADMIN_PASSWORD))
     # Both of these are survivable but leave the site half-functional, so they
     # are shouted at startup rather than discovered at the first booking.
     if not config.ADMIN_PASSWORD:
@@ -77,6 +108,22 @@ app.include_router(public.router)
 app.include_router(admin.router)
 
 
+@app.get("/v/{build}/{path:path}", include_in_schema=False)
+def versioned_asset(build: str, path: str) -> Response:
+    """Code servi sous une URL qui change à chaque déploiement.
+
+    Un cache intermédiaire — celui du navigateur comme celui de Cloudflare —
+    ne peut pas servir une version périmée d'une URL qu'il n'a jamais vue. Le
+    `no-cache` des chemins nus reste le filet ; ceci est la ceinture, et c'est
+    elle qui rend un déploiement visible immédiatement sans purge manuelle.
+    """
+    target = os.path.realpath(os.path.join(FRONTEND, path))
+    if not target.startswith(os.path.realpath(FRONTEND) + os.sep) or not os.path.isfile(target):
+        raise HTTPException(404, "Fichier introuvable.")
+    # Immuable : l'empreinte est dans l'URL, donc ce contenu ne changera jamais.
+    return FileResponse(target, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
 @app.get("/health")
 def health() -> dict:
     """Liveness for Coolify and for the reverse-monitor: it touches the
@@ -108,11 +155,14 @@ def build() -> Response:
 
 @app.get("/admin", include_in_schema=False)
 @app.get("/admin/", include_in_schema=False)
-def admin_page() -> FileResponse:
-    return FileResponse(
-        os.path.join(FRONTEND, "admin", "index.html"),
-        headers={"Cache-Control": "no-cache"},
-    )
+def admin_page() -> Response:
+    return HTMLResponse(_page(os.path.join("admin", "index.html")),
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/", include_in_schema=False)
+def home() -> Response:
+    return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
 # Mounted last: it owns every path the API did not claim.
