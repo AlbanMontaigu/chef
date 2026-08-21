@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from . import config, content, db, seed
-from .routers import admin, billing as billing_api, public
+from .routers import admin, billing as billing_api, client, public
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -48,7 +48,7 @@ BUILD_ID = _build_id()
 # Réécrit les URL du code vers /v/<build>/… Les imports relatifs à l'intérieur
 # des modules suivent automatiquement : `../js/util.js` depuis
 # /v/<build>/admin/admin.js résout vers /v/<build>/js/util.js.
-_ASSET_RE = re.compile(r'(href|src)="/(css|js|admin)/')
+_ASSET_RE = re.compile(r'(href|src)="/(css|js|admin|client)/')
 
 
 def _page(filename: str) -> str:
@@ -109,6 +109,7 @@ def on_error(request: Request, exc: Exception) -> JSONResponse:
 app.include_router(public.router)
 app.include_router(admin.router)
 app.include_router(billing_api.router)
+app.include_router(client.router)
 
 
 @app.get("/v/{build}/{path:path}", include_in_schema=False)
@@ -161,6 +162,19 @@ def build() -> Response:
 def admin_page() -> Response:
     return HTMLResponse(_page(os.path.join("admin", "index.html")),
                         headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/r/{token}", include_in_schema=False)
+def client_page(token: str) -> Response:
+    """Page de suivi d'une réservation. Le jeton n'est PAS vérifié ici : la
+    page est la même pour tout le monde et ne contient aucune donnée : elle
+    interroge `/api/r/{token}`, qui lui refuse ou lui répond. Contrôler deux
+    fois inviterait à ce que les deux contrôles divergent un jour."""
+    return HTMLResponse(_page(os.path.join("client", "index.html")),
+                        headers={"Cache-Control": "no-cache",
+                                 # Un lien secret n'a rien à faire dans un
+                                 # index de moteur de recherche.
+                                 "X-Robots-Tag": "noindex, nofollow"})
 
 
 @app.get("/", include_in_schema=False)

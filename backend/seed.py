@@ -27,7 +27,7 @@ log = logging.getLogger("chef.seed")
 
 # Incrémenter à CHAQUE modification des exemples ci-dessous -- y compris
 # quand une nouvelle fonctionnalité ajoute un champ que le jeu doit montrer.
-SEED_VERSION = 9
+SEED_VERSION = 10
 _MARKER = "seed_version"
 
 
@@ -322,6 +322,21 @@ BOOKINGS = [
         ],
     },
 
+    # Repas d'après-demain : la fenêtre d'annulation en ligne est fermée
+    # (elle ferme `cancel_days` avant), et la page du client doit le dire au
+    # lieu d'afficher un bouton qui échouerait.
+    {
+        "key": "imminente", "slot": (2, "midi"), "ref": "R-W9DCK5",
+        "name": "Aurélie Sanchez", "email": "aurelie.sanchez@example.com",
+        "phone": "06 71 05 88 24", "address": "11 rue Sarrazin", "city": "44000 Nantes",
+        "travel": (540, 2100, ""),
+        "guests": 6, "formula": "decouverte",
+        "message": "Déjeuner de famille, ma mère fête ses 80 ans.",
+        "diets": [("sans-porc", 2)],
+        "mail": ("sent", "sent", ""),
+        "payments": [("acompte", 8100, "virement", -18, "Acompte 30 %")],
+    },
+
     # --- Variété de clients, de lieux et de formules -------------------
     # Les états de l'application sont tous couverts par ce qui précède. Ce qui
     # suit existe pour que le back-office ressemble à une activité réelle
@@ -427,7 +442,12 @@ BOOKINGS = [
         "diets": [("sans-alcool", 2)],
         "mail": ("sent", "sent", ""),
         "travel": (3060, 58200, ""),
-        "payments": [],
+        "invoice": {
+            "status": "issued", "issued": -4, "due": 10,
+            "lines": [("Acompte — menu bord de mer, dîner du {date}", 1, 16000)],
+            "mail": "sent", "notes": "Acompte à la réservation, solde après le repas.",
+        },
+        "payments": [("acompte", 16000, "virement", -3, "")],
     },
     # À venir, tout près, sans rien de particulier : le cas le plus banal
     # doit exister lui aussi, sinon le jeu ne ressemble à rien de réel.
@@ -521,13 +541,13 @@ def _insert(conn) -> None:
         # ligne à chiffrer.
         slug = spec["formula"]
         cur = conn.execute(
-            """INSERT INTO bookings (ref, slot_id, name, email, phone, address, city, guests,
+            """INSERT INTO bookings (ref, token, slot_id, name, email, phone, address, city, guests,
                                      formula, formula_id, message, diets, status, created_at,
                                      cancelled_at, mail_client, mail_chef, mail_error,
                                      travel_seconds, travel_meters, travel_error,
                                      travel_label, travel_approx, travel_at, demo)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
-            (spec["ref"], slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (spec["ref"], db.new_token(), slot_ids[slot_key], spec["name"], spec["email"], spec["phone"],
              spec["address"], spec.get("city", ""), spec["guests"],
              formula_names.get(slug, "") if slug else "",
              formula_ids.get(slug) if slug else None, spec["message"],

@@ -7,6 +7,7 @@ than being scattered across the routers.
 
 import logging
 import os
+import secrets
 import sqlite3
 from contextlib import contextmanager
 
@@ -37,6 +38,7 @@ _ADDED_COLUMNS = (
     ("bookings", "demo", "INTEGER NOT NULL DEFAULT 0"),
     ("bookings", "city", "TEXT NOT NULL DEFAULT ''"),
     ("bookings", "diets", "TEXT NOT NULL DEFAULT '[]'"),
+    ("bookings", "token", "TEXT"),
     ("bookings", "travel_seconds", "INTEGER"),
     ("bookings", "travel_meters", "INTEGER"),
     ("bookings", "travel_error", "TEXT NOT NULL DEFAULT ''"),
@@ -62,6 +64,29 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 conn.execute(
                     "UPDATE bookings SET demo = 1 WHERE slot_id IN "
                     "(SELECT id FROM slots WHERE demo = 1)")
+    # Toute réservation doit pouvoir ouvrir sa page de suivi, y compris celles
+    # enregistrées avant que le jeton n'existe. Rattrapé à chaque démarrage et
+    # pas seulement à l'ajout de la colonne : une ligne sans jeton est une
+    # réservation dont le client n'a aucun lien, quelle qu'en soit la cause.
+    _mint_tokens(conn)
+
+
+def new_token() -> str:
+    """Secret d'URL de la page client. 128 bits : il est la seule chose qui
+    protège le dossier, il ne se devine pas et ne se force pas."""
+    return secrets.token_urlsafe(16)
+
+
+def _mint_tokens(conn: sqlite3.Connection) -> None:
+    if not {r["name"] for r in conn.execute("PRAGMA table_info(bookings)")}:
+        return  # table absente : rien à rattraper
+    rows = conn.execute(
+        "SELECT id FROM bookings WHERE token IS NULL OR token = ''"
+    ).fetchall()
+    for row in rows:
+        conn.execute("UPDATE bookings SET token = ? WHERE id = ?", (new_token(), row["id"]))
+    if rows:
+        log.info("migration: %d jeton(s) de suivi attribué(s)", len(rows))
 
 
 def init() -> None:
@@ -70,8 +95,13 @@ def init() -> None:
         schema = fh.read()
     conn = _connect()
     try:
-        conn.executescript(schema)
+        # Le rattrapage passe AVANT le schéma, et non après : `schema.sql`
+        # déclare des index qui portent sur des colonnes ajoutées après coup
+        # (`bookings.token`). Sur une base ancienne, les créer avant que la
+        # colonne existe fait échouer le script entier -- donc le démarrage.
+        # Sur une base neuve, `_migrate` ne voit aucune table et ne fait rien.
         _migrate(conn)
+        conn.executescript(schema)
     finally:
         conn.close()
 

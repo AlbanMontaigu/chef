@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS slots (
 CREATE TABLE IF NOT EXISTS bookings (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     ref           TEXT NOT NULL UNIQUE,     -- human-readable, given to the client
+    -- Secret d'accès à la page de suivi du client. SÉPARÉ de `ref` à dessein :
+    -- la référence est faite pour être lue au téléphone (alphabet sans
+    -- sosies, six caractères), donc devinable ; elle ne peut pas servir de
+    -- clé d'URL. Le jeton est long, aléatoire, et n'est jamais affiché.
+    token         TEXT,
     slot_id       INTEGER NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     email         TEXT NOT NULL,
@@ -68,6 +73,12 @@ CREATE TABLE IF NOT EXISTS bookings (
 -- a slot can carry at most one live booking, whatever races upstream.
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_live_per_slot
     ON bookings (slot_id) WHERE status = 'confirmed';
+
+-- Le jeton est une clé d'accès : deux réservations ne peuvent pas partager la
+-- même, sous peine de montrer à un client le dossier d'un autre. Les valeurs
+-- NULL restent distinctes en SQLite, ce qui laisse passer une base ancienne le
+-- temps que la migration remplisse la colonne.
+CREATE UNIQUE INDEX IF NOT EXISTS bookings_by_token ON bookings (token);
 
 CREATE INDEX IF NOT EXISTS bookings_by_created ON bookings (created_at DESC);
 CREATE INDEX IF NOT EXISTS slots_by_date ON slots (date);

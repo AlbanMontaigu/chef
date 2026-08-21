@@ -153,6 +153,10 @@ function confirmation() {
       <p class="big">${escapeHtml(longDate(c.date))} — ${escapeHtml(SERVICE_LABEL[c.service] ?? c.service)}</p>
       <p class="ref">Référence ${escapeHtml(c.ref)}</p>
       ${mail}
+      ${c.link ? `<p class="follow-link">Votre page de suivi :
+        <a href="${escapeHtml(c.link)}">${escapeHtml(location.origin + c.link)}</a><br>
+        <span class="notice">Gardez-la : on y retrouve le détail, la facture et l'annulation.
+        Elle est aussi dans l'e-mail de confirmation.</span></p>` : ''}
       <p style="margin-top:1.25rem"><button type="button" class="link" data-reset="1">Réserver une autre date</button></p>
     </div>`;
 }

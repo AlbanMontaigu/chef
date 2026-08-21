@@ -155,14 +155,15 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
                 log.warning("formule inconnue %r sur une réservation", payload.formula)
 
         ref = _new_ref()
+        token = db.new_token()
         cur = conn.execute(
             """
             INSERT INTO bookings
-                (ref, slot_id, name, email, phone, address, city, guests, formula,
+                (ref, token, slot_id, name, email, phone, address, city, guests, formula,
                  formula_id, message, diets, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)
             """,
-            (ref, payload.slot_id, payload.name, payload.email, payload.phone,
+            (ref, token, payload.slot_id, payload.name, payload.email, payload.phone,
              payload.address, payload.city, payload.guests, formula_label, formula_id,
              payload.message, diets.dumps(declared), now),
         )
@@ -173,7 +174,7 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
         "name": payload.name, "email": payload.email, "phone": payload.phone,
         "address": payload.address, "city": payload.city, "guests": payload.guests,
         "formula": formula_label, "message": payload.message,
-        "diets": diets.dumps(declared),
+        "diets": diets.dumps(declared), "token": token,
     }
     log.info("booking %s created for %s %s", ref, slot["date"], slot["service"])
 
@@ -188,4 +189,7 @@ def create_booking(payload: BookingIn, background: BackgroundTasks) -> dict:
         "date": slot["date"],
         "service": slot["service"],
         "mail_sent": client_status == "sent",
+        # Le lien de suivi est rendu à la page de confirmation : un client qui
+        # ne reçoit pas l'e-mail (ou le perd) repart quand même avec.
+        "link": f"/r/{token}",
     }

@@ -28,6 +28,7 @@
     "min_guests": 2,
     "max_guests": 20,
     "lead_days": 5,
+    "cancel_days": 7,
     "horizon_days": 180,
     "notice": "La réservation bloque la date. Je vous recontacte sous 48 h pour le menu."
   },

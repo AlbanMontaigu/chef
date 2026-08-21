@@ -311,6 +311,39 @@ textarea { resize: vertical; }
   font: 600 0.95rem/1 var(--sans);
 }
 
+/* Le lien de suivi affiché après une réservation : il doit se copier en entier,
+   donc il ne se coupe pas et il ne déborde pas non plus sur un téléphone. */
+.follow-link { margin: 1.25rem 0 0; font-size: 0.92rem; }
+.follow-link a { overflow-wrap: anywhere; font-weight: 600; }
+.follow-link .notice { display: inline-block; margin-top: 0.4rem; }
+
+/* --- Page de suivi du client -------------------------------------------- */
+/* Elle réutilise `.panel`, `.btn` et `.badge` du back-office : c'est la même
+   feuille, et un client n'a pas besoin d'un troisième vocabulaire visuel.
+   `.meta`, `.quote` et `.actions` sont en revanche portées par un parent dans
+   tout le reste de la feuille : elles sont redéclarées ici plutôt que
+   dé-scopées ailleurs, ce qui déplacerait des styles du back-office. */
+.client-wrap { max-width: 38rem; padding-top: 2.5rem; padding-bottom: 4rem; }
+.client-head { text-align: center; margin-bottom: 2rem; }
+.client-head h1 { font-size: 1.9rem; margin-bottom: 0.6rem; }
+.client-head .big { font-size: 1.15rem; margin: 0 0 0.9rem; }
+.client-head .big::first-letter { text-transform: uppercase; }
+.client-head .eyebrow { justify-content: center; }
+/* Une réservation annulée ne se lit pas comme une réservation vivante : le
+   titre change, la date est barrée, et le doute n'a pas lieu d'être. */
+.client-head.is-cancelled h1 { color: var(--bad); }
+.client-head.is-cancelled .big { text-decoration: line-through; color: var(--ink-soft); }
+.client-wrap .meta { color: var(--ink-soft); font-size: 0.9rem; margin: 0.35rem 0 0; }
+.client-wrap .quote { font-style: italic; margin: 0.35rem 0 0; }
+.client-wrap .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0 0; }
+.client-wrap .build { text-align: center; }
+.kvs { display: grid; gap: 0.5rem; margin: 0 0 1.25rem; }
+.kv { display: flex; gap: 0.75rem; justify-content: space-between; align-items: baseline; border-bottom: 1px dashed var(--line); padding-bottom: 0.5rem; }
+.kv dt { font: 600 0.85rem/1.5 var(--sans); color: var(--ink-soft); margin: 0; }
+.kv dd { margin: 0; text-align: right; }
+.label-line { font: 600 0.78rem/1.5 var(--sans); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 1rem 0 0.35rem; }
+.flash { background: var(--olive-soft); border: 1px solid #cfdab8; border-radius: var(--r); padding: 0.9rem 1.15rem; margin: 0 0 1.5rem; font-weight: 600; }
+
 /* --- Pied de page ------------------------------------------------------- */
 .site-footer { background: var(--paper-warm); border-top: 1px solid var(--line); padding: 3rem 0 2rem; margin-top: 1rem; }
 .footer-grid { display: flex; gap: 1.5rem; justify-content: space-between; flex-wrap: wrap; align-items: baseline; }

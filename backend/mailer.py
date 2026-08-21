@@ -13,7 +13,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate
 
-from . import config, db, diets
+from . import config, db, diets, money
 
 log = logging.getLogger("chef.mail")
 
@@ -117,9 +117,31 @@ def _client_body(booking: dict, site_name: str) -> str:
         f"détails (matériel sur place, horaire d'arrivée). Si la ligne "
         f"« Régimes » ci-dessus est incomplète ou fausse, dites-le moi : "
         f"c'est sur elle que je construis le menu.\n\n"
-        f"Pour annuler ou modifier, répondez simplement à cet e-mail.\n\n"
+        f"{_follow_block(booking)}"
         f"À très bientôt,\n{site_name}\n"
     )
+
+
+def _follow_block(booking: dict) -> str:
+    """Le lien de suivi remplace « répondez à cet e-mail » quand il existe.
+
+    Les deux ensemble diraient au client de choisir entre une page et une
+    boîte mail pour le même geste ; l'e-mail reste nommé comme le recours,
+    puisque la page ferme l'annulation quelques jours avant le repas.
+    """
+    url = follow_url(booking)
+    if not url:
+        return "Pour annuler ou modifier, répondez simplement à cet e-mail.\n\n"
+    return (f"Le détail de votre réservation, votre facture et l'annulation "
+            f"sont ici, ce lien est le vôtre :\n\n  {url}\n\n"
+            f"Pour tout le reste, répondez simplement à cet e-mail.\n\n")
+
+
+def follow_url(booking: dict) -> str:
+    """Lien de la page de suivi. Vide si la réservation n'a pas de jeton --
+    on préfère une phrase en moins qu'un lien qui tombe sur une 404."""
+    token = booking.get("token") or ""
+    return f"{config.PUBLIC_URL}/r/{token}" if token else ""
 
 
 def _address(booking: dict) -> str:
@@ -141,6 +163,70 @@ def _chef_body(booking: dict) -> str:
         f"  Adresse    : {_address(booking)}\n\n"
         f"  Message    : {booking['message'] or '—'}\n\n"
         f"Back-office : {config.PUBLIC_URL}/admin\n"
+        + (f"Page du client : {follow_url(booking)}\n" if follow_url(booking) else "")
+    )
+
+
+def _client_cancelled_chef_body(booking: dict, paid: int) -> str:
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    # Le solde encaissé est écrit en toutes lettres, y compris à zéro : c'est
+    # la seule ligne qui engage de l'argent, et « rien à rembourser » doit se
+    # lire aussi clairement que le contraire.
+    money_line = (f"  ⚠ ARGENT   : {money.format_amount(paid)} déjà encaissé — à rembourser.\n"
+                  if paid > 0 else "  Argent     : rien encaissé, rien à rembourser.\n")
+    return (
+        f"Le client a annulé lui-même ({booking['ref']}).\n\n"
+        f"  Date       : {_pretty_date(booking['date'])} ({service})\n"
+        f"  Convives   : {booking['guests']}\n"
+        f"  Client     : {booking['name']}\n"
+        f"  E-mail     : {booking['email']}\n"
+        f"  Téléphone  : {booking['phone'] or '—'}\n"
+        f"{money_line}"
+        f"\nLe créneau est de nouveau libre sur le site.\n\n"
+        f"Back-office : {config.PUBLIC_URL}/admin\n"
+    )
+
+
+def _client_cancelled_ack_body(booking: dict, site_name: str, paid: int) -> str:
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    money_line = (f"\nVous aviez versé {money.format_amount(paid)} : je vous recontacte "
+                  f"très vite pour le remboursement.\n" if paid > 0 else "")
+    return (
+        f"Bonjour {booking['name']},\n\n"
+        f"Votre annulation est enregistrée : le repas du "
+        f"{_pretty_date(booking['date'])} ({service}), référence {booking['ref']}, "
+        f"n'aura pas lieu.\n"
+        f"{money_line}\n"
+        f"Si vous souhaitez reporter plutôt qu'annuler, répondez à cet e-mail : "
+        f"je vous garde une date.\n\n"
+        f"À une prochaine fois,\n{site_name}\n"
+    )
+
+
+def notify_chef_client_cancelled(booking: dict, paid: int) -> None:
+    """Tâche de fond : prévenir le chef qu'un client s'est désisté.
+
+    Le résultat n'est pas écrit sur la réservation : les colonnes `mail_*`
+    décrivent la confirmation initiale, et les écraser effacerait la trace de
+    ce qui s'est passé au moment de la réservation.
+    """
+    service = SERVICE_LABEL.get(booking["service"], booking["service"])
+    _send(
+        config.MAIL_TO,
+        f"[Annulation client] {_short_date(booking['date'])} {service} — {booking['name']}"
+        + (" 💶 acompte à rendre" if paid > 0 else ""),
+        _client_cancelled_chef_body(booking, paid),
+        reply_to=booking["email"],
+    )
+
+
+def send_client_cancellation_ack(booking: dict, site_name: str, paid: int) -> None:
+    """Tâche de fond : accuser réception au client qui vient d'annuler."""
+    _send(
+        booking["email"],
+        f"Annulation enregistrée — réservation {booking['ref']}",
+        _client_cancelled_ack_body(booking, site_name, paid),
+        reply_to=config.MAIL_TO or "",
     )
 
 

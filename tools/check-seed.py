@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT))
 _TMP = tempfile.mkdtemp(prefix="chef-seed-check-")
 os.environ.update(DATA_DIR=_TMP, SEED_DEMO="1", DEV="1", TZ="Europe/Paris")
 
-from backend import billing, db, diets, seed, settings  # noqa: E402  (l'env doit précéder l'import)
+from backend import billing, db, diets, seed, settings
+from backend.routers import client  # noqa: E402  (l'env doit précéder l'import)
 
 
 def _load() -> dict:
@@ -45,6 +46,12 @@ def _load() -> dict:
         data["states"] = {}
         for booking in data["bookings"]:
             data["states"][booking["ref"]] = billing.booking_billing(conn, booking)
+        # Le verdict d'annulation est demandé à la fonction qui l'applique
+        # réellement, pas à une copie de sa règle : un contrôle qui réimplémente
+        # ce qu'il vérifie finit par valider sa propre erreur.
+        data["cancellation"] = {
+            b["ref"]: client._cancellation(conn, b) for b in data["bookings"]
+        }
         data["lines"] = {
             inv["id"]: billing.lines_of(conn, inv["id"]) for inv in data["invoices"]
         }
@@ -146,6 +153,32 @@ def build_checks(d: dict) -> list[tuple[str, bool]]:
         ("envoi de facture réussi", any(i["mail_status"] == "sent" for i in issued)),
         ("envoi de facture en échec",
          any(i["mail_status"] == "failed" and i["mail_error"] for i in issued)),
+
+        # --- Page de suivi du client
+        ("réservation porteuse d'un jeton de suivi",
+         all(b["token"] for b in bookings)),
+        ("jetons de suivi tous distincts",
+         len({b["token"] for b in bookings}) == len(bookings)),
+        ("jeton assez long pour ne pas se deviner",
+         all(len(b["token"] or "") >= 16 for b in bookings)),
+        ("réservation annulable en ligne par le client",
+         any(v["allowed"] for v in d["cancellation"].values())),
+        ("annulation refusée : le repas est trop proche",
+         any(not v["allowed"] and "ferme" in v["reason"]
+             for v in d["cancellation"].values())),
+        ("annulation refusée : une facture est déjà émise",
+         any(not v["allowed"] and "facture" in v["reason"]
+             for v in d["cancellation"].values())),
+        ("annulation refusée : le repas a déjà eu lieu",
+         any(not v["allowed"] and "déjà eu lieu" in v["reason"]
+             for v in d["cancellation"].values())),
+        ("annulation refusée : la réservation est déjà annulée",
+         any(not v["allowed"] and "déjà annulée" in v["reason"]
+             for v in d["cancellation"].values())),
+        ("réservation à venir avec un acompte encaissé (remboursement à prévoir)",
+         any(b["date"] >= today and b["status"] == "confirmed"
+             and sum(p["amount_cents"] for p in payments if p["booking_id"] == b["id"]) > 0
+             for b in bookings)),
 
         # --- États de paiement dérivés
         ("état : pas encore facturé", any_state("unbilled")),

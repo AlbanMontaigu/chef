@@ -399,6 +399,8 @@ export function folderPanel() {
           <p class="hint">${escapeHtml(longDate(booking.date))} — ${escapeHtml(SERVICE_LABEL[booking.service] ?? booking.service)}
             · ${escapeHtml(booking.guests)} couverts · ${escapeHtml(booking.formula || 'formule à définir')} · réf. ${escapeHtml(booking.ref)}</p>
           <p class="diet-line">${dietBadges(data.diets)}</p>
+          ${data.follow_url ? `<p class="meta">Page du client :
+            <a href="${escapeHtml(data.follow_url)}" target="_blank" rel="noopener">${escapeHtml(data.follow_url)}</a></p>` : ''}
           ${travelLine(booking, data)}
         </div>
         <button class="btn" data-folder-close="1">Fermer</button>

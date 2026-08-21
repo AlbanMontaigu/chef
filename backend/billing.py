@@ -298,6 +298,10 @@ def booking_billing(conn: sqlite3.Connection, booking: dict) -> dict:
         # second appel ferait clignoter le lien après coup.
         "chef_address": settings.chef_address(),
         "client_address": full_address(booking),
+        # Le lien que le client a reçu. Le chef en a besoin pour le lui
+        # renvoyer quand il l'a perdu -- c'est plus rapide qu'un renvoi
+        # d'e-mail, et ça marche même quand sa boîte le classe en spam.
+        "follow_url": f"{config.PUBLIC_URL}/r/{booking['token']}" if booking.get("token") else "",
         # Le dossier peut être ouvert depuis l'onglet Facturation, où la
         # réservation n'est pas dans la liste chargée : les régimes voyagent
         # donc avec les données du dossier, pas seulement avec la carte.

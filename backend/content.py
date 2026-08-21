@@ -24,7 +24,7 @@ _FALLBACK = {
     "about": "",
     "area": "",
     "contact": {},
-    "booking": {"min_guests": 2, "max_guests": 20, "lead_days": 3},
+    "booking": {"min_guests": 2, "max_guests": 20, "lead_days": 3, "cancel_days": 7},
 }
 
 _cache: dict | None = None
